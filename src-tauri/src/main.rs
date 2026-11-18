@@ -28,7 +28,7 @@ use windows::Win32::{
     Foundation::{HWND, POINT},
     UI::{
         Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON},
-        WindowsAndMessaging::{GetCursorPos, ShowWindow, SW_HIDE, SW_SHOWNOACTIVATE},
+        WindowsAndMessaging::{GetCursorPos, SetWindowPos, ShowWindow, SWP_NOACTIVATE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE},
     },
 };
 
@@ -276,9 +276,15 @@ fn resize(window: WebviewWindow, width: f64, height: f64) -> Result<(), String> 
         let scale = m.scale_factor();
         let (w, h) = ((width * scale).round() as u32, (height * scale).round() as u32);
         let x = m.position().x + (m.size().width as i32 - w as i32) / 2;
-        // Move first: crossing to a screen with another scale makes Windows resize the window itself.
-        window.set_position(PhysicalPosition::new(x, m.position().y))?;
-        window.set_size(PhysicalSize::new(w, h))
+        // One SetWindowPos: moving and then resizing showed a frame with the notch off-centre.
+        let hwnd = window.hwnd()?;
+        let _ = unsafe { SetWindowPos(HWND(hwnd.0), None, x, m.position().y, w as i32, h as i32, SWP_NOZORDER | SWP_NOACTIVATE) };
+        // Crossing to a screen with another scale makes Windows resize the window itself.
+        if window.inner_size()? != PhysicalSize::new(w, h) {
+            window.set_position(PhysicalPosition::new(x, m.position().y))?;
+            window.set_size(PhysicalSize::new(w, h))?;
+        }
+        Ok(())
     };
     run().map_err(|e| e.to_string())
 }

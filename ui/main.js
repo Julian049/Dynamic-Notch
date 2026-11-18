@@ -11,6 +11,7 @@ const COMPACT_H = { classic: 34, win11: 40 };
 let compactW = 330;
 const WIDTH_EXPANDED = 460; // expanded width of the views without a Figma width (Drop, notification)
 const VIEW_W = { music: 500, claude: 420, focus: 400, batteries: 380, drag: 380, drop: 380, notif: 420, pending: 420 }; // Figma "Size=Expanded" bodies
+const MAX_W = Math.max(WIDTH_EXPANDED, ...Object.values(VIEW_W)); // widest compact (music + Claude + bell) or expanded view
 const ANIM_MS = 520; // longest .shape transition in style.css
 
 let cfg = { claude: false, music: true, lyrics: true, art_color: true, eq: true, claude_working: true, claude_done: true, claude_permission: true };
@@ -32,8 +33,7 @@ let sent = ''; // "Enviado · <name>" for 3 s
 let sentTimer;
 // Unseen notifications for the bell (Figma "Music + Notifications"): one per notification that arrives
 // while the notch is not expanded. Expanding the notch shows them, so it counts them all as seen.
-let pending = []; // notifications that arrived while the notch was closed (Figma "Notifications · Pending"); cleared when it collapses
-let wasExpanded = false;
+let pending = []; // notifications not seen with the mouse (Figma "Notifications · Pending"); cleared when the mouse leaves the open notch
 let dropError = '';
 let dragging = false;
 let dragArmed = false; // Rust saw a drag start somewhere (maybe not a file)
@@ -71,7 +71,9 @@ async function layout() {
   if (expanded) notch.style.setProperty('--xw', `${VIEW_W[shownView] || WIDTH_EXPANDED}px`);
   const [w, h] = expanded ? [VIEW_W[shownView] || WIDTH_EXPANDED, $('full').offsetHeight] : idle ? SIZE_EMPTY : [compactW, COMPACT_H[win11 ? 'win11' : 'classic']];
   const z = ZOOM[cfg.size] || 1;
-  let ww = Math.ceil((w + 2 * (EAR + PAD)) * z) + (win11 ? 2 * WIN11_SHADOW : 0);
+  // Fixed width: WebView2 paints a resized window a frame late, so a width change (the window grows
+  // on both sides) showed the notch off-centre for a frame. A height change doesn't move anything.
+  let ww = Math.ceil((MAX_W + 2 * (EAR + PAD)) * z) + (win11 ? 2 * WIN11_SHADOW : 0);
   let wh = Math.ceil((h + PAD + (win11 ? WIN11_GAP : 0)) * z) + (win11 ? WIN11_SHADOW : 0);
   // Cover the whole drag zone (watch_visibility in main.rs) and fit the expanded "suéltalo" notch
   // before the drag arrives: resizing while a file hovers makes Windows drop the drag target.
@@ -109,6 +111,7 @@ document.documentElement.addEventListener('mouseleave', () => {
   clearTimeout(hoverTimer);
   hovering = false;
   focusAlert = false;
+  if (expanded) pending = []; // the user had them on screen
   forgetSeenSessions();
   setExpanded(false);
 });
@@ -474,8 +477,9 @@ listen('system', ({ payload }) => showNotice(payload));
 // A new notification replaces the one on screen right away, like on a phone.
 const notifIcons = {}; // aumid -> object URL (null: the app has no logo)
 listen('notification', ({ payload }) => {
-  if (!expanded) pending = [{ ...payload, at: Date.now() }, ...pending].slice(0, 20);
+  if (!hovering) pending = [{ ...payload, at: Date.now() }, ...pending].slice(0, 20);
   showNotice({ kind: 'notification', ...payload });
+  setExpanded(true); // Figma: a notification arrives with the notch open; it closes with the notice
   if (payload.aumid in notifIcons) return;
   notifIcons[payload.aumid] = null;
   invoke('notif_icon', { aumid: payload.aumid }).then((buf) => {
@@ -488,6 +492,7 @@ function showNotice(payload) {
   clearTimeout(noticeTimer);
   noticeTimer = setTimeout(() => {
     notice = null;
+    if (!hovering) setExpanded(false); // without the mouse only a notification opens it (a later notice may have replaced it)
     render();
   }, noticeMs(payload.kind));
   render();
@@ -932,8 +937,6 @@ function render() {
   const waiting = top?.state === 'waiting';
   const lyric = currentLyric();
   lastLyricIndex = lyric ? lyric.i : -2;
-  if (!expanded && wasExpanded) pending = [];
-  wasExpanded = expanded;
 
   const v = compactView(list, lyric);
   compactW = v.w;
