@@ -37,6 +37,9 @@ use windows::Win32::{
 pub struct Config {
     pub claude: bool,
     pub sound: bool,
+    /// "Sonidos de la isla" (all of them) and, under it, the ones of interaction (open, close, click).
+    pub sounds: bool,
+    pub ui_sounds: bool,
     pub autohide: bool,
     pub hide_secs: u64,
     pub music: bool,
@@ -88,6 +91,8 @@ impl Default for Config {
         Config {
             claude: false,
             sound: true,
+            sounds: true,
+            ui_sounds: true,
             autohide: true,
             hide_secs: 5,
             music: true,
@@ -334,6 +339,8 @@ fn settings_json(app: &AppHandle, targets: &[PathBuf]) -> Value {
     json!({
         "claude": c.claude,
         "sound": c.sound,
+        "sounds": c.sounds,
+        "ui_sounds": c.ui_sounds,
         "autohide": c.autohide,
         "hide_secs": c.hide_secs,
         "music": c.music,
@@ -389,6 +396,8 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
     }
     for (key, field) in [
         ("sound", &mut cfg.sound),
+        ("sounds", &mut cfg.sounds),
+        ("ui_sounds", &mut cfg.ui_sounds),
         ("autohide", &mut cfg.autohide),
         ("music", &mut cfg.music),
         ("lyrics", &mut cfg.lyrics),

@@ -241,11 +241,6 @@ pub fn stop(app: &AppHandle) {
     }
 }
 
-pub fn beep() {
-    use windows::Win32::{System::Diagnostics::Debug::MessageBeep, UI::WindowsAndMessaging::MB_OK};
-    let _ = unsafe { MessageBeep(MB_OK) };
-}
-
 /// POST /hook with our token header and Claude Code's hook JSON as body → forwarded to the UI.
 fn serve(app: AppHandle, server: Arc<tiny_http::Server>) {
     for mut req in server.incoming_requests() {
@@ -276,9 +271,6 @@ fn serve(app: AppHandle, server: Arc<tiny_http::Server>) {
                     };
                     // During focus work only a permission request gets through.
                     if shown && (event == "Notification" || !crate::focus::quiet(&app)) {
-                        if cfg.sound && event == "Stop" {
-                            beep();
-                        }
                         crate::wake(&app);
                     }
                     slim(&mut v);

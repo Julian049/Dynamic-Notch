@@ -41,9 +41,9 @@ html, body {
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  transition: transform 0.3s var(--ease-out);
+  transition: transform 0.45s var(--spring); /* appearing: drops in with the spring */
 }
-body.hidden .notch { transform: translate(-50%, calc(-100% - 4px)); }
+body.hidden .notch { transform: translate(-50%, calc(-100% - 4px)); transition: transform 0.25s var(--ease-out); } /* hiding: no bounce */
 
 /* "Estilo del notch: Windows 11": the colours and type of Figma "Dynamic Notch V2" (Windows 11 flyout grey,
    Segoe at 14 px, 40 px tall, with a shadow), but floating below the top edge as a pill, without ears
@@ -84,6 +84,8 @@ body.win11.hidden .notch { transform: translate(-50%, calc(-100% - 40px)); }
   overflow: hidden;
   transition: width 0.34s var(--ease-out), height 0.34s var(--ease-out), border-radius 0.34s var(--ease-out);
 }
+/* Closing: the content fades (0.12 s) before the box folds. */
+.closing .shape { transition-delay: 0.08s; }
 /* Nothing to show and "Ocultar automáticamente" off: Figma "None · Idle". */
 .notch.idle .shape { border-radius: 0 0 12px 12px; }
 .expanded .shape {
@@ -100,7 +102,7 @@ body.blink .alert .shape { box-shadow: inset 0 -2px 0 var(--attention); }
   position: absolute;
   top: 0;
   left: 0;
-  transition: opacity 0.18s;
+  transition: opacity 0.12s;
 }
 .compact {
   /* The final width, not the animated one: the line is laid out (and the marquee measured) at its end size. */
@@ -219,10 +221,10 @@ button {
   place-items: center;
   padding: 0;
   font: inherit;
-  transition: background-color 0.15s, transform 0.12s var(--ease-out);
+  transition: background-color 0.15s, transform 0.3s var(--spring); /* pressed: sinks in 0.1 s, returns with the spring */
 }
 button:hover { background: var(--line); }
-button:active { transform: scale(0.92); }
+button:active { transform: scale(0.92); transition-duration: 0.15s, 0.1s; }
 button:focus-visible { outline: 2px solid var(--fg-dim); outline-offset: 1px; }
 button svg { width: 20px; height: 20px; fill: currentColor; }
 /* The hidden attribute does not hide SVG elements by itself. */
@@ -372,3 +374,21 @@ body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { 
 .full.v-pending { padding: 14px 18px 14px; gap: 14px; }
 .pending .more { text-align: center; font-size: 11px; line-height: 14px; color: var(--text-3); }
 .pending .srow .meta { flex: 1; }
+
+/* ---------- Animations (one-shot only; nothing loops, see the rule above) ---------- */
+/* A view's children enter when it is shown (display none → block restarts the animation), staggered by 30 ms. */
+@keyframes vin { from { opacity: 0; transform: translateY(6px) scale(0.98); } }
+.full .view:not([hidden]) > *, .dragzone:not([hidden]) { animation: vin 0.25s var(--ease-out) backwards; animation-delay: 0.1s; }
+.full .view:not([hidden]) > :nth-child(2) { animation-delay: 0.13s; }
+.full .view:not([hidden]) > :nth-child(3) { animation-delay: 0.16s; }
+.full .view:not([hidden]) > :nth-child(n+4) { animation-delay: 0.19s; }
+.pending .srow { animation: vin 0.25s var(--ease-out) backwards; }
+.pending .srow:nth-child(2) { animation-delay: 0.04s; }
+.pending .srow:nth-child(3) { animation-delay: 0.08s; }
+.track > i { transition: width 0.12s var(--ease-out); }
+.battery > i { transform-origin: left; }
+.ic.sun { transition: transform 0.2s var(--ease-out); }
+.cover { transition: opacity 0.2s; }
+.cover.paused { opacity: 0.6; }
+.xbtn .ic { transition: transform 0.2s var(--ease-out); }
+.xbtn:active .ic { transform: rotate(90deg); }

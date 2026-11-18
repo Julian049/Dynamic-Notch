@@ -215,7 +215,6 @@ pub fn run(app: AppHandle) {
             t.tick(Instant::now(), &d)
         };
         if ended {
-            crate::claude::beep();
             wake(&app);
             let _ = app.emit_to("island", "focus-end", ());
         }

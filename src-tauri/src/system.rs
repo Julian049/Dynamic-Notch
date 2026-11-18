@@ -95,6 +95,8 @@ impl Tracker {
                 if d.connected && !before.is_some_and(|b| b.connected) {
                     // Settings shows the level in steps of 10 as well: it is approximate.
                     out.push(json!({ "kind": "bt_connected", "name": d.name, "battery": d.battery.map(|b| b / 10 * 10) }));
+                } else if !d.connected && before.is_some_and(|b| b.connected) {
+                    out.push(json!({ "kind": "bt_disconnected", "name": d.name }));
                 } else if d.connected && d.battery.is_some_and(|b| b <= BT_LOW) && before.and_then(|b| b.battery).is_some_and(|b| b > BT_LOW) {
                     out.push(json!({ "kind": "bt_low", "name": d.name, "battery": d.battery }));
                 }
@@ -360,8 +362,10 @@ mod tests {
         assert!(t.devices(map(vec![("A", dev("Audífonos", true, Some(80)))])).is_empty(), "already connected at start");
         let e = t.devices(map(vec![("A", dev("Audífonos", true, Some(80))), ("B", dev("Mouse", true, Some(57)))]));
         assert_eq!(e, [json!({ "kind": "bt_connected", "name": "Mouse", "battery": 50 })]);
-        let e = t.devices(map(vec![("A", dev("Audífonos", true, Some(20))), ("B", dev("Mouse", false, Some(57)))]));
+        let e = t.devices(map(vec![("A", dev("Audífonos", true, Some(20))), ("B", dev("Mouse", true, Some(57)))]));
         assert_eq!(e, [json!({ "kind": "bt_low", "name": "Audífonos", "battery": 20 })]);
+        let e = t.devices(map(vec![("A", dev("Audífonos", true, Some(20))), ("B", dev("Mouse", false, Some(57)))]));
+        assert_eq!(e, [json!({ "kind": "bt_disconnected", "name": "Mouse" })]);
         assert!(t.devices(map(vec![("A", dev("Audífonos", true, Some(15)))])).is_empty(), "warned once");
         let e = t.devices(map(vec![("A", dev("Audífonos", true, Some(15))), ("C", dev("Teclado", true, None))]));
         assert_eq!(e, [json!({ "kind": "bt_connected", "name": "Teclado", "battery": null })]);

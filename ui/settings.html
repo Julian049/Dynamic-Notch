@@ -82,6 +82,20 @@
               <option value="3000">Larga · 3 s</option>
             </select>
           </label>
+          <div class="expander open">
+            <div class="card">
+              <img class="icon" src="icons/bell.svg" alt="">
+              <span class="text"><b>Sonidos de la isla</b><small>Avisos, Claude, focus y Drop. Siguen el volumen de Windows.</small></span>
+              <label class="toggle"><input type="checkbox" role="switch" data-key="sounds" aria-label="Sonidos de la isla"></label>
+              <button type="button" class="expand" aria-label="Mostrar opciones"></button>
+            </div>
+            <div class="rows">
+              <label class="row">
+                <span class="text"><b>Sonidos de interacción</b><small>Abrir, cerrar y pulsar botones.</small></span>
+                <span class="toggle"><input type="checkbox" role="switch" data-key="ui_sounds" data-needs="sounds"></span>
+              </label>
+            </div>
+          </div>
         </div>
         <div class="group">
           <h3>Apariencia</h3>
