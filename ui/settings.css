@@ -27,7 +27,16 @@ body {
   font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
 }
 main { padding: 20px 24px; }
-h1 { font-size: 20px; font-weight: 600; margin: 0 0 16px; }
+h1 { font-size: 20px; font-weight: 600; margin: 0; }
+header { display: grid; gap: 4px; margin-bottom: 8px; }
+header small, .muted { color: var(--dim); font-size: 12px; }
+#search { font: inherit; padding: 6px 10px; margin-top: 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--card); color: var(--fg); }
+h2 { font-size: 18px; font-weight: 600; margin: 24px 0 8px; }
+h3 { font-size: 14px; font-weight: 600; margin: 16px 0 8px; }
+h3.in { margin: 0; padding: 12px 16px 0; border-top: 1px solid var(--line); }
+.row.sub { padding-left: 40px; }
+.filtered { display: none !important; }
+[hidden] { display: none !important; }
 
 section {
   background: var(--card);

@@ -1,32 +1,42 @@
 const { invoke } = window.__TAURI__.core;
-const { listen } = window.__TAURI__.event;
+const { listen, emit } = window.__TAURI__.event;
 const $ = (id) => document.getElementById(id);
 
-const SWITCHES = ['autostart', 'autohide', 'claude', 'sound', 'music', 'lyrics', 'art_color', 'eq', 'claude_working', 'claude_done', 'claude_permission', 'focus', 'drop', 'sys_volume', 'sys_battery', 'sys_bluetooth'];
-const MINUTES = ['focus_work', 'focus_break', 'focus_long'];
+// Every control with data-key maps to that setting: checkboxes are booleans, data-number numbers,
+// data-bool a select of "true"/"false", anything else a string. data-needs="<key>" disables it while that switch is off.
+const controls = [...document.querySelectorAll('[data-key]')];
+const valueOf = (el) =>
+  el.type === 'checkbox' ? el.checked : 'number' in el.dataset ? Math.round(Number(el.value)) : 'bool' in el.dataset ? el.value === 'true' : el.value;
+let settings;
 let sessions = [];
 
-let lastSettings;
 function fill(s) {
-  lastSettings = s;
-  for (const key of SWITCHES) ($(key).checked = !!s[key]), ($(key).disabled = false); // save() disabled them
-  for (const key of ['lyrics', 'art_color', 'eq']) $(key).disabled = !s.music;
-  if (document.activeElement !== $('hide_secs')) $('hide_secs').value = s.hide_secs;
-  $('hide_secs').disabled = !s.autohide;
-  for (const key of MINUTES) {
-    if (document.activeElement !== $(key)) $(key).value = s[key];
-    $(key).disabled = !s.focus;
+  settings = s;
+  $('status').textContent = `Activo · v${s.version}`;
+  $('monitor').replaceChildren(
+    new Option('Pantalla principal', ''),
+    ...s.monitors.map((m, i) => new Option(`Pantalla ${i + 1} · ${m.size}`, m.name)),
+  );
+  for (const el of controls) {
+    if (document.activeElement === el && el.type === 'number') continue; // don't overwrite while typing
+    if (el.type === 'checkbox') el.checked = !!s[el.dataset.key];
+    else el.value = String(s[el.dataset.key]);
+    el.disabled = el.dataset.needs ? !s[el.dataset.needs] : false;
   }
+
   const found = s.claude_targets.length > 0;
   // Turning it off must stay possible even if the .claude folders disappeared.
   $('claude').disabled = !found && !s.claude;
   $('claude-note').textContent = found
-    ? `Añade sus hooks a: ${s.claude_targets.join(', ')}`
+    ? `Avisa mientras trabaja y cuando termina. Añade sus hooks a: ${s.claude_targets.join(', ')}`
     : 'No se encontró ninguna carpeta .claude (ni en WSL ni en Windows).';
-  $('notif_target').value = s.notif_notch ? 'notch' : 'windows';
-  $('notif_target').disabled = false;
-  if (s.notif_access !== 'allowed') $('notif-note').textContent = 'Windows no deja leer las notificaciones (Configuración › Privacidad › Notificaciones).';
-  $('notif-apps-row').hidden = !s.notif_notch;
+  $('claude-extra').hidden = !s.claude;
+  $('claude-off').hidden = s.claude;
+  $('hooks-status').textContent = s.claude_hooks ? 'Instalados' : 'Faltan o están desactualizados: pulsa Reinstalar.';
+  renderStatus();
+
+  if (s.notif_access !== 'allowed') $('notif-note').textContent = 'Windows no deja leer las notificaciones: revisa Configuración › Privacidad › Notificaciones.';
+  $('notif-apps-row').hidden = !(s.notif && s.notif_notch);
   const apps = Object.entries(s.notif_apps).sort((a, b) => a[1].localeCompare(b[1]));
   $('notif-apps').replaceChildren(
     ...(apps.length ? apps : [['', 'Aparecerán aquí cuando envíen una notificación.']]).map(([aumid, name]) => {
@@ -46,51 +56,26 @@ function fill(s) {
       return label;
     }),
   );
-  $('claude-extra').hidden = !s.claude;
-  $('sound').disabled = !s.claude_done;
-  $('claude-status').textContent = s.claude_server ? 'Conectado' : 'Sin servidor: no se pudo abrir el puerto 27823.';
-  $('hooks-status').textContent = s.claude_hooks ? 'Instalados' : 'Faltan o están desactualizados: pulsa Reinstalar.';
-  $('reinstall').disabled = false;
+  filter();
 }
 
-const fmtTime = (ms) => {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-};
-const STATE = { working: 'En curso', waiting: 'Atención', done: 'Terminó' };
-
-function renderSessions() {
-  const box = $('sessions');
-  box.replaceChildren();
-  if (!sessions.length) return (box.textContent = 'Ninguna.');
-  for (const s of sessions) {
-    const time = fmtTime(s.state === 'done' ? s.duration : Date.now() - s.started);
-    const line = document.createElement('div');
-    line.textContent = `${s.project} — ${STATE[s.state]} · ${s.detail || s.text} · ${time}`;
-    box.append(line);
-  }
+// "Conectado · 2 sesiones activas"; the island sends the sessions (claude-sessions).
+function renderStatus() {
+  if (!settings) return;
+  const n = sessions.filter((s) => s.state !== 'done').length;
+  $('claude-status').textContent = !settings.claude_server
+    ? 'Sin servidor: no se pudo abrir el puerto 27823.'
+    : `Conectado · ${n === 1 ? '1 sesión activa' : `${n} sesiones activas`}`;
 }
 listen('claude-sessions', ({ payload }) => {
   sessions = payload;
-  renderSessions();
+  renderStatus();
 });
-setInterval(renderSessions, 1000);
-window.__TAURI__.event.emit('claude-sessions-request');
-
-$('reinstall').addEventListener('click', async () => {
-  $('error').textContent = '';
-  $('reinstall').disabled = true;
-  try {
-    fill(await invoke('claude_reinstall'));
-  } catch (e) {
-    $('error').textContent = String(e);
-    fill(await invoke('get_settings'));
-  }
-});
+emit('claude-sessions-request');
 
 async function save(patch) {
   $('error').textContent = '';
-  for (const el of document.querySelectorAll('input')) el.disabled = true;
+  for (const el of controls) el.disabled = true;
   try {
     fill(await invoke('set_settings', { patch }));
   } catch (e) {
@@ -99,24 +84,49 @@ async function save(patch) {
   }
 }
 
-for (const key of SWITCHES) {
-  $(key).addEventListener('change', (e) => save({ [key]: e.target.checked }));
-}
-$('hide_secs').addEventListener('change', (e) => {
-  const n = Math.round(Number(e.target.value));
-  if (Number.isFinite(n) && n >= 2) save({ hide_secs: n });
-  else e.target.value = 10;
-});
-
-$('notif_target').addEventListener('change', (e) => save({ notif_notch: e.target.value === 'notch' }));
-
-for (const key of MINUTES) {
-  $(key).addEventListener('change', (e) => {
-    const n = Math.round(Number(e.target.value));
-    if (Number.isFinite(n) && n >= 1) save({ [key]: n });
-    else fill(lastSettings);
+for (const el of controls) {
+  el.addEventListener('change', () => {
+    const v = valueOf(el);
+    if (typeof v === 'number' && !(Number.isFinite(v) && v >= 1)) return fill(settings);
+    save({ [el.dataset.key]: v });
   });
 }
+
+// Runs a button's command, showing its error if it fails.
+function action(id, command) {
+  $(id).addEventListener('click', async () => {
+    $('error').textContent = '';
+    $(id).disabled = true;
+    try {
+      const s = await invoke(command);
+      if (s) fill(s);
+    } catch (e) {
+      $('error').textContent = String(e);
+    }
+    $(id).disabled = false;
+  });
+}
+action('reinstall', 'claude_reinstall');
+action('claude-test', 'claude_test');
+action('demo', 'demo');
+action('notif-open', 'open_notif_settings');
+
+// "Buscar un ajuste": hides the rows that don't match, then sections and headings left empty.
+function filter() {
+  const q = $('search').value.trim().toLocaleLowerCase('es');
+  for (const row of document.querySelectorAll('.row')) row.classList.toggle('filtered', !!q && !row.textContent.toLocaleLowerCase('es').includes(q));
+  for (const sec of document.querySelectorAll('section')) sec.classList.toggle('filtered', !!q && !sec.querySelector('.row:not(.filtered)'));
+  // A heading stays while any section up to the next heading of the same or higher level is visible.
+  const heads = [...document.querySelectorAll('main > h2, main > h3')];
+  for (const h of heads) {
+    let visible = false;
+    for (let n = h.nextElementSibling; n && !(n.tagName === 'H2' || (n.tagName === 'H3' && h.tagName === 'H3')); n = n.nextElementSibling) {
+      if (n.tagName === 'SECTION' && !n.classList.contains('filtered') && !n.hidden) visible = true;
+    }
+    h.classList.toggle('filtered', !!q && !visible);
+  }
+}
+$('search').addEventListener('input', filter);
 
 listen('settings', ({ payload }) => fill(payload));
 invoke('get_settings').then(fill);

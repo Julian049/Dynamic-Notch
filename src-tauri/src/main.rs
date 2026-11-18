@@ -21,7 +21,7 @@ use std::{
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewWindow, WindowEvent,
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use windows::Win32::{
@@ -55,7 +55,9 @@ pub struct Config {
     pub sys_volume: bool,
     pub sys_battery: bool,
     pub sys_bluetooth: bool,
-    /// "Mostrar notificaciones en": true = Notch (the island shows them and silences Windows'), false = Windows.
+    /// Notificaciones on: the island shows them.
+    pub notif: bool,
+    /// "Dónde se muestran": true = only in the notch (Windows' banner and sound off), false = notch and Windows.
     pub notif_notch: bool,
     /// AUMIDs left to Windows even in Notch mode.
     pub notif_excluded: Vec<String>,
@@ -67,6 +69,16 @@ pub struct Config {
     pub focus_work: u64,
     pub focus_break: u64,
     pub focus_long: u64,
+    /// "Pantalla": a monitor name from available_monitors(), or empty for the primary one.
+    pub monitor: String,
+    /// "Abrir al pasar el mouse": "instant", "short" or "never".
+    pub hover: String,
+    /// "Duración de los avisos" of volume/brightness, in ms (battery and Bluetooth last twice as long).
+    pub notice_ms: u64,
+    /// "Estilo del notch": "classic" or "win11".
+    pub style: String,
+    /// "Tamaño": "small", "normal" or "large".
+    pub size: String,
     /// Sent by our Claude Code hooks; persisted because it is written into settings.json.
     pub token: String,
 }
@@ -77,7 +89,7 @@ impl Default for Config {
             claude: false,
             sound: true,
             autohide: true,
-            hide_secs: 10,
+            hide_secs: 5,
             music: true,
             lyrics: true,
             art_color: true,
@@ -90,7 +102,13 @@ impl Default for Config {
             sys_volume: true,
             sys_battery: true,
             sys_bluetooth: true,
+            notif: true,
             notif_notch: false,
+            monitor: String::new(),
+            hover: "short".into(),
+            notice_ms: 1500,
+            style: "classic".into(),
+            size: "normal".into(),
             notif_excluded: vec![],
             notif_apps: Default::default(),
             notif_touched: Default::default(),
@@ -194,7 +212,7 @@ fn watch_visibility(app: AppHandle) {
             (c.autohide, c.hide_secs, c.drop)
         };
         let Some(w) = island(&app) else { continue };
-        let Ok(Some(m)) = w.primary_monitor() else { continue };
+        let Some(m) = target_monitor(&w) else { continue };
         let mut p = POINT::default();
         if unsafe { GetCursorPos(&mut p) }.is_err() {
             continue;
@@ -252,11 +270,15 @@ fn watch_visibility(app: AppHandle) {
 #[tauri::command]
 fn resize(window: WebviewWindow, width: f64, height: f64) -> Result<(), String> {
     let run = || -> tauri::Result<()> {
-        let Some(m) = window.primary_monitor()? else { return Ok(()) };
+        let Some(m) = target_monitor(&window) else { return Ok(()) };
+        // Physical pixels of the target monitor: logical units would use the scale of the monitor the
+        // window is on now, which is wrong when moving between screens with different scaling.
         let scale = m.scale_factor();
-        let x = m.position().x as f64 / scale + (m.size().width as f64 / scale - width) / 2.0;
-        window.set_size(LogicalSize::new(width, height))?;
-        window.set_position(LogicalPosition::new(x, m.position().y as f64 / scale))
+        let (w, h) = ((width * scale).round() as u32, (height * scale).round() as u32);
+        let x = m.position().x + (m.size().width as i32 - w as i32) / 2;
+        // Move first: crossing to a screen with another scale makes Windows resize the window itself.
+        window.set_position(PhysicalPosition::new(x, m.position().y))?;
+        window.set_size(PhysicalSize::new(w, h))
     };
     run().map_err(|e| e.to_string())
 }
@@ -264,6 +286,31 @@ fn resize(window: WebviewWindow, width: f64, height: f64) -> Result<(), String> 
 #[tauri::command]
 fn set_keep(app: AppHandle, keep: bool) {
     app.state::<AppState>().vis.lock().unwrap().keep = keep;
+}
+
+/// The monitor chosen in "Pantalla", or the primary one if it is not connected.
+fn target_monitor(w: &WebviewWindow) -> Option<tauri::Monitor> {
+    // The island may ask to resize before setup() has managed the state.
+    let name = w.try_state::<AppState>().map(|s| s.cfg.lock().unwrap().monitor.clone()).unwrap_or_default();
+    let chosen = (!name.is_empty())
+        .then(|| w.available_monitors().ok()?.into_iter().find(|m| m.name() == Some(&name)))
+        .flatten();
+    chosen.or_else(|| w.primary_monitor().ok().flatten())
+}
+
+/// "Abrir configuración" next to the notifications settings.
+#[tauri::command]
+fn open_notif_settings() -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    // explorer.exe opens ms-settings: URIs; CREATE_NO_WINDOW keeps a console from flashing.
+    std::process::Command::new("explorer.exe").arg("ms-settings:notifications").creation_flags(0x0800_0000).spawn().map(drop).map_err(|e| e.to_string())
+}
+
+/// "Probar el notch": shows a sample notice on the island.
+#[tauri::command]
+fn demo(app: AppHandle) {
+    wake(&app);
+    let _ = app.emit_to("island", "system", json!({ "kind": "demo" }));
 }
 
 #[tauri::command]
@@ -295,7 +342,18 @@ fn settings_json(app: &AppHandle, targets: &[PathBuf]) -> Value {
         "sys_volume": c.sys_volume,
         "sys_battery": c.sys_battery,
         "sys_bluetooth": c.sys_bluetooth,
+        "notif": c.notif,
         "notif_notch": c.notif_notch,
+        "monitor": c.monitor,
+        "monitors": app.available_monitors().unwrap_or_default().iter().map(|m| json!({
+            "name": m.name().cloned().unwrap_or_default(),
+            "size": format!("{}×{}", m.size().width, m.size().height),
+        })).collect::<Vec<_>>(),
+        "hover": c.hover,
+        "notice_ms": c.notice_ms,
+        "style": c.style,
+        "size": c.size,
+        "version": app.package_info().version.to_string(),
         "notif_excluded": c.notif_excluded,
         "notif_apps": c.notif_apps,
         "notif_access": notify::access_status(),
@@ -338,6 +396,7 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
         ("sys_volume", &mut cfg.sys_volume),
         ("sys_battery", &mut cfg.sys_battery),
         ("sys_bluetooth", &mut cfg.sys_bluetooth),
+        ("notif", &mut cfg.notif),
     ] {
         if let Some(b) = patch[key].as_bool() {
             *field = b;
@@ -345,6 +404,22 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
     }
     if let Some(b) = patch["notif_notch"].as_bool() {
         cfg.notif_notch = b;
+    }
+    // Choices validated against their options, so a bad value can't reach the UI.
+    for (key, field, options) in [
+        ("hover", &mut cfg.hover, &["instant", "short", "never"][..]),
+        ("style", &mut cfg.style, &["classic", "win11"][..]),
+        ("size", &mut cfg.size, &["small", "normal", "large"][..]),
+    ] {
+        if let Some(v) = patch[key].as_str().filter(|v| options.contains(v)) {
+            *field = v.to_string();
+        }
+    }
+    if let Some(v) = patch["monitor"].as_str() {
+        cfg.monitor = v.to_string();
+    }
+    if let Some(n) = patch["notice_ms"].as_u64().filter(|n| [1000, 1500, 3000].contains(n)) {
+        cfg.notice_ms = n;
     }
     if let Some(list) = patch["notif_excluded"].as_array() {
         cfg.notif_excluded = list.iter().filter_map(|v| v.as_str().map(String::from)).collect();
@@ -379,7 +454,7 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
     if !drop_on {
         drop::stop(&app);
     }
-    if patch.get("notif_notch").is_some() || patch.get("notif_excluded").is_some() {
+    if ["notif", "notif_notch", "notif_excluded"].iter().any(|k| patch.get(k).is_some()) {
         notify::apply(&app);
     }
     let targets = claude::targets();
@@ -468,6 +543,9 @@ fn main() {
             media::media_control,
             media::media_art,
             claude_reinstall,
+            claude::claude_test,
+            open_notif_settings,
+            demo,
             notify::notif_icon,
             focus::focus_start,
             focus::focus_pause,

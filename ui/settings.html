@@ -7,128 +7,192 @@
   <script src="settings.js" defer></script>
 </head>
 <body>
+  <!-- placeholder layout: crude on purpose until the Figma redesign. Order and options follow the Figma. -->
   <main>
-    <h1>Ajustes</h1>
+    <header>
+      <h1>Dynamic Notch</h1>
+      <small id="status">Activo</small>
+      <input type="search" id="search" placeholder="Buscar un ajuste" aria-label="Buscar un ajuste">
+    </header>
 
+    <h2>General</h2>
+    <h3>Comportamiento</h3>
     <section>
       <label class="row">
         <span class="text"><b>Iniciar con Windows</b><small>Se abre oculta al iniciar sesión.</small></span>
-        <input type="checkbox" role="switch" id="autostart">
+        <input type="checkbox" role="switch" data-key="autostart">
       </label>
       <label class="row">
-        <span class="text"><b>Auto-ocultar</b><small>Se esconde cuando no hay nada que mostrar.</small></span>
-        <input type="checkbox" role="switch" id="autohide">
+        <span class="text"><b>Pantalla</b><small>Dónde aparece el notch.</small></span>
+        <select data-key="monitor" id="monitor"></select>
       </label>
       <label class="row">
-        <span class="text"><b>Ocultar tras</b><small>Segundos sin actividad.</small></span>
-        <input type="number" id="hide_secs" min="2" max="3600" step="1" inputmode="numeric">
+        <span class="text"><b>Abrir al pasar el mouse</b><small>Solo funciona cuando hay algo activo. Con «Nunca», se abre con un clic.</small></span>
+        <select data-key="hover">
+          <option value="instant">Al instante</option>
+          <option value="short">Con pausa corta</option>
+          <option value="never">Nunca</option>
+        </select>
+      </label>
+      <label class="row">
+        <span class="text"><b>Ocultar automáticamente</b><small>Se esconde cuando no hay actividad. Apagado: el notch queda siempre visible.</small></span>
+        <input type="checkbox" role="switch" data-key="autohide">
+      </label>
+      <label class="row sub">
+        <span class="text"><b>Ocultar después de</b><small>Tiempo sin actividad ni mouse encima.</small></span>
+        <select data-key="hide_secs" data-number data-needs="autohide">
+          <option value="3">3 segundos</option>
+          <option value="5">5 segundos (recomendado)</option>
+          <option value="10">10 segundos</option>
+          <option value="15">15 segundos</option>
+          <option value="30">30 segundos</option>
+        </select>
+      </label>
+      <label class="row">
+        <span class="text"><b>Duración de los avisos</b><small>Volumen y brillo; batería y Bluetooth duran el doble.</small></span>
+        <select data-key="notice_ms" data-number>
+          <option value="1000">Corta · 1 s</option>
+          <option value="1500">Normal · 1.5 s</option>
+          <option value="3000">Larga · 3 s</option>
+        </select>
+      </label>
+    </section>
+    <h3>Apariencia</h3>
+    <section>
+      <label class="row">
+        <span class="text"><b>Estilo del notch</b><small>Pegado al borde como un notch, o flotando como los menús de Windows 11.</small></span>
+        <select data-key="style">
+          <option value="classic">Notch clásico</option>
+          <option value="win11">Windows 11</option>
+        </select>
+      </label>
+      <label class="row">
+        <span class="text"><b>Tamaño</b><small>Qué tan grande se ve el notch.</small></span>
+        <select data-key="size">
+          <option value="small">Pequeño</option>
+          <option value="normal">Normal</option>
+          <option value="large">Grande</option>
+        </select>
       </label>
     </section>
 
+    <h2>Elementos</h2>
+    <section>
+      <div class="row">
+        <span class="text"><b>Tú decides qué aparece</b><small>Lo que desactives no entra al notch. Si no hay nada activo, se queda oculto.</small></span>
+        <button type="button" id="demo">Probar el notch</button>
+      </div>
+    </section>
+    <h3>Actividad</h3>
     <section>
       <label class="row">
         <span class="text"><b>Música</b><small>Carátula, letra y controles de lo que está sonando.</small></span>
-        <input type="checkbox" role="switch" id="music">
+        <input type="checkbox" role="switch" data-key="music">
       </label>
-      <label class="row">
-        <span class="text"><b>Letra sincronizada</b><small>Consulta lrclib.net con el título y el artista.</small></span>
-        <input type="checkbox" role="switch" id="lyrics">
+      <label class="row sub">
+        <span class="text"><b>Letra sincronizada</b><small>Muestra la línea que se está cantando (consulta lrclib.net).</small></span>
+        <input type="checkbox" role="switch" data-key="lyrics" data-needs="music">
       </label>
-      <label class="row">
+      <label class="row sub">
         <span class="text"><b>Color de la carátula de fondo</b><small>Tiñe el notch con los colores del álbum.</small></span>
-        <input type="checkbox" role="switch" id="art_color">
+        <input type="checkbox" role="switch" data-key="art_color" data-needs="music">
       </label>
-      <label class="row">
+      <label class="row sub">
         <span class="text"><b>Ecualizador animado</b></span>
-        <input type="checkbox" role="switch" id="eq">
+        <input type="checkbox" role="switch" data-key="eq" data-needs="music">
       </label>
-    </section>
-
-    <section>
       <label class="row">
-        <span class="text"><b>Integración con Claude Code</b><small id="claude-note">Buscando instalaciones…</small></span>
-        <input type="checkbox" role="switch" id="claude" disabled>
+        <span class="text"><b>Claude Code</b><small id="claude-note">Buscando instalaciones…</small></span>
+        <input type="checkbox" role="switch" data-key="claude" id="claude">
       </label>
-      <div id="claude-extra">
-        <div class="row">
-          <span class="text"><b>Estado</b><small id="claude-status"></small></span>
-        </div>
-        <div class="row">
-          <span class="text"><b>Hooks de Claude Code</b><small id="hooks-status"></small></span>
-          <button type="button" id="reinstall">Reinstalar</button>
-        </div>
-        <label class="row">
-          <span class="text"><b>Mientras trabaja</b><small>Indicador con el tiempo que lleva.</small></span>
-          <input type="checkbox" role="switch" id="claude_working">
-        </label>
-        <label class="row">
-          <span class="text"><b>Cuando termina</b><small>Muestra el final de su respuesta.</small></span>
-          <input type="checkbox" role="switch" id="claude_done">
-        </label>
-        <label class="row">
-          <span class="text"><b>Cuando necesita tu permiso</b><small>Avisa y no se oculta hasta que respondas.</small></span>
-          <input type="checkbox" role="switch" id="claude_permission">
-        </label>
-        <label class="row">
-          <span class="text"><b>Sonido al terminar</b><small>Cuando Claude termina una respuesta.</small></span>
-          <input type="checkbox" role="switch" id="sound">
-        </label>
-        <div class="row">
-          <span class="text"><b>Sesiones activas</b><small id="sessions">Ninguna.</small></span>
-        </div>
-      </div>
+      <label class="row">
+        <span class="text"><b>Modo focus</b><small>Temporizador de concentración. Se inicia desde la bandeja o desde el notch.</small></span>
+        <input type="checkbox" role="switch" data-key="focus">
+      </label>
+      <label class="row sub">
+        <span class="text"><b>Concentración</b><small>Minutos.</small></span>
+        <input type="number" data-key="focus_work" data-number data-needs="focus" min="1" max="180" step="1" inputmode="numeric">
+      </label>
+      <label class="row sub">
+        <span class="text"><b>Descanso</b><small>Minutos.</small></span>
+        <input type="number" data-key="focus_break" data-number data-needs="focus" min="1" max="180" step="1" inputmode="numeric">
+      </label>
+      <label class="row sub">
+        <span class="text"><b>Descanso largo</b><small>Minutos, cada 4 ciclos.</small></span>
+        <input type="number" data-key="focus_long" data-number data-needs="focus" min="1" max="180" step="1" inputmode="numeric">
+      </label>
+      <label class="row">
+        <span class="text"><b>Compartir archivos</b><small>Arrastra un archivo al notch y pásalo al teléfono con un QR.</small></span>
+        <input type="checkbox" role="switch" data-key="drop">
+      </label>
     </section>
-
-    <section>
-      <div class="row">
-        <span class="text"><b>Mostrar notificaciones en</b><small id="notif-note">En el notch, Windows deja de mostrar el aviso de la esquina y su sonido (se restaura al volver a Windows). Siguen en el centro de notificaciones.</small></span>
-        <select id="notif_target"><option value="windows">Windows</option><option value="notch">Notch</option></select>
-      </div>
-      <div class="row" id="notif-apps-row">
-        <span class="text"><b>Apps</b><small>Desmarca las que prefieras dejar en Windows.</small><span id="notif-apps"></span></span>
-      </div>
-    </section>
-
+    <h3>Sistema</h3>
     <section>
       <label class="row">
         <span class="text"><b>Volumen y brillo</b><small>Aparece solo cuando los cambias.</small></span>
-        <input type="checkbox" role="switch" id="sys_volume">
+        <input type="checkbox" role="switch" data-key="sys_volume">
       </label>
       <label class="row">
         <span class="text"><b>Batería</b><small>Cargador conectado y batería baja.</small></span>
-        <input type="checkbox" role="switch" id="sys_battery">
+        <input type="checkbox" role="switch" data-key="sys_battery">
       </label>
       <label class="row">
         <span class="text"><b>Dispositivos Bluetooth</b><small>Al conectarse, con su batería aproximada.</small></span>
-        <input type="checkbox" role="switch" id="sys_bluetooth">
+        <input type="checkbox" role="switch" data-key="sys_bluetooth">
       </label>
+      <label class="row">
+        <span class="text"><b>Notificaciones</b><small id="notif-note">Muestra en el notch las notificaciones de Windows.</small></span>
+        <input type="checkbox" role="switch" data-key="notif">
+      </label>
+      <label class="row sub">
+        <span class="text"><b>Dónde se muestran</b><small>«Solo en el notch» apaga el aviso y el sonido de Windows de cada app; vuelven al cambiarlo. Siguen en el centro de notificaciones.</small></span>
+        <select data-key="notif_notch" data-bool data-needs="notif">
+          <option value="false">En el notch y en Windows</option>
+          <option value="true">Solo en el notch</option>
+        </select>
+      </label>
+      <div class="row sub">
+        <span class="text"><small>Para elegir qué apps notifican, usa la configuración de Windows.</small></span>
+        <button type="button" id="notif-open">Abrir configuración</button>
+      </div>
+      <div class="row sub" id="notif-apps-row">
+        <span class="text"><b>Apps en el notch</b><small>Desmarca las que prefieras dejar solo en Windows.</small><span id="notif-apps"></span></span>
+      </div>
     </section>
 
-    <section>
+    <h2>Conexiones</h2>
+    <section id="claude-extra">
+      <div class="row">
+        <span class="text"><b>Claude Code</b><small id="claude-status"></small></span>
+      </div>
+      <h3 class="in">Cuándo mostrarlo</h3>
       <label class="row">
-        <span class="text"><b>Compartir archivos</b><small>Arrastra un archivo al notch y pásalo al teléfono con un QR.</small></span>
-        <input type="checkbox" role="switch" id="drop">
+        <span class="text"><b>Mientras trabaja</b><small>Indicador pequeño con el tiempo que lleva.</small></span>
+        <input type="checkbox" role="switch" data-key="claude_working">
       </label>
+      <label class="row">
+        <span class="text"><b>Cuando termina</b><small>Despliega el notch con el final de su respuesta.</small></span>
+        <input type="checkbox" role="switch" data-key="claude_done">
+      </label>
+      <label class="row sub">
+        <span class="text"><b>Sonido al terminar</b></span>
+        <input type="checkbox" role="switch" data-key="sound" data-needs="claude_done">
+      </label>
+      <label class="row">
+        <span class="text"><b>Cuando necesita tu permiso</b><small>Te avisa si Claude está esperando una respuesta.</small></span>
+        <input type="checkbox" role="switch" data-key="claude_permission">
+      </label>
+      <h3 class="in">Integración</h3>
+      <div class="row">
+        <span class="text"><b>Hooks de Claude Code</b><small id="hooks-status"></small></span>
+        <button type="button" id="reinstall">Reinstalar</button>
+      </div>
+      <div class="row">
+        <span class="text"><b>Probar la conexión</b><small>Envía un aviso de prueba al notch por el mismo camino que Claude Code.</small></span>
+        <button type="button" id="claude-test">Enviar prueba</button>
+      </div>
     </section>
-
-    <section>
-      <label class="row">
-        <span class="text"><b>Modo focus</b><small>Temporizador de concentración. Se inicia desde la bandeja o desde el notch.</small></span>
-        <input type="checkbox" role="switch" id="focus">
-      </label>
-      <label class="row">
-        <span class="text"><b>Concentración</b><small>Minutos.</small></span>
-        <input type="number" id="focus_work" min="1" max="180" step="1" inputmode="numeric">
-      </label>
-      <label class="row">
-        <span class="text"><b>Descanso</b><small>Minutos.</small></span>
-        <input type="number" id="focus_break" min="1" max="180" step="1" inputmode="numeric">
-      </label>
-      <label class="row">
-        <span class="text"><b>Descanso largo</b><small>Minutos, cada 4 ciclos.</small></span>
-        <input type="number" id="focus_long" min="1" max="180" step="1" inputmode="numeric">
-      </label>
-    </section>
+    <p id="claude-off" class="muted">Activa Claude Code en Elementos para conectarlo.</p>
 
     <p class="error" id="error" role="alert"></p>
   </main>

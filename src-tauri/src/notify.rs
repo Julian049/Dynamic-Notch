@@ -76,7 +76,7 @@ pub fn apply(app: &AppHandle) {
         live.notif_touched = touched.clone();
         save_config(app, &live)
     };
-    let wanted: HashSet<String> = if cfg.notif_notch {
+    let wanted: HashSet<String> = if cfg.notif && cfg.notif_notch {
         known_apps().into_iter().chain(cfg.notif_apps.keys().cloned()).filter(|a| !cfg.notif_excluded.contains(a)).collect()
     } else {
         HashSet::new()
@@ -181,7 +181,7 @@ pub fn run(app: AppHandle) {
             apply(&app);
             crate::emit_settings(&app);
         }
-        if !cfg.notif_notch || cfg.notif_excluded.contains(&aumid) || crate::focus::quiet(&app) {
+        if !cfg.notif || cfg.notif_excluded.contains(&aumid) || crate::focus::quiet(&app) {
             continue;
         }
         let icons = app.state::<Icons>();

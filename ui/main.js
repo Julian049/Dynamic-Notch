@@ -19,7 +19,7 @@ let art = { rev: -1, url: null, color: null }; // cover as a blob: URL and its d
 const sessions = new Map();
 let drop = null; // { url, qr, files, inbox }
 let focus = null; // { phase: 'work'|'break'|'long_break', remaining_ms, total_ms, paused, away, cycle, cycles }
-let notice = null; // transient system notice: { kind, ... } from system.rs, gone after NOTICE_MS
+let notice = null; // transient system notice: { kind, ... } from system.rs, gone after noticeMs()
 let noticeTimer;
 let batteries = { pc: null, devices: [] };
 let focusAlert = false; // a phase just ended; stays until the user has seen it
@@ -49,9 +49,17 @@ function resizeWindow(w, h) {
 
 // The window grows before the notch animates and shrinks after, so the animation is never clipped
 // and the transparent window never covers more of the screen than needed for long.
+// "Tamaño" scales the whole notch (CSS zoom on .notch); "Windows 11" floats below the edge with a shadow.
+const ZOOM = { small: 0.85, normal: 1, large: 1.2 };
+const WIN11_GAP = 8; // top offset; .win11 .notch in style.css
+const WIN11_SHADOW = 24; // room for its box-shadow
+
 async function layout() {
   const [w, h] = expanded ? [WIDTH_EXPANDED, $('full').scrollHeight] : hasContent() ? SIZE_COMPACT : SIZE_EMPTY;
-  let ww = w + 2 * (EAR + PAD), wh = h + PAD;
+  const z = ZOOM[cfg.size] || 1;
+  const win11 = cfg.style === 'win11';
+  let ww = Math.ceil((w + 2 * (EAR + PAD)) * z) + (win11 ? 2 * WIN11_SHADOW : 0);
+  let wh = Math.ceil((h + PAD) * z) + (win11 ? WIN11_GAP + WIN11_SHADOW : 0);
   // Cover the whole drag zone (watch_visibility in main.rs) and fit the expanded "suéltalo" notch
   // before the drag arrives: resizing while a file hovers makes Windows drop the drag target.
   if (dragArmed || dragging) (ww = Math.max(ww, 600)), (wh = Math.max(wh, 140));
@@ -73,11 +81,18 @@ function setExpanded(on) {
   render();
 }
 
+// "Abrir al pasar el mouse": instant, short (a brief dwell) or never (click instead). Only with something to show.
+let hoverTimer;
 document.documentElement.addEventListener('mouseenter', () => {
   hovering = true;
-  setExpanded(true);
+  if (cfg.hover === 'never' || !hasContent()) return;
+  hoverTimer = setTimeout(() => setExpanded(true), cfg.hover === 'instant' ? 0 : 300);
+});
+$('notch').addEventListener('click', () => {
+  if (!expanded && hasContent()) setExpanded(true);
 });
 document.documentElement.addEventListener('mouseleave', () => {
+  clearTimeout(hoverTimer);
   hovering = false;
   focusAlert = false;
   forgetSeenSessions();
@@ -301,9 +316,15 @@ listen('claude', ({ payload: p }) => {
   render();
 });
 
+function applyLook() {
+  document.body.classList.toggle('win11', cfg.style === 'win11');
+  $('notch').style.zoom = ZOOM[cfg.size] || 1;
+  winSize = [0, 0]; // forces the next layout() to resize, and so re-place the window ("Pantalla" may have changed)
+}
 listen('settings', ({ payload }) => {
   const lyricsWasOn = cfg.lyrics;
   cfg = payload;
+  applyLook();
   if (!cfg.claude) sessions.clear();
   if (!cfg.music) media = null; // the next media tick brings it back when turned on
   if (media && cfg.lyrics && !lyricsWasOn) (lyrics.key = ''), loadLyrics(media);
@@ -311,6 +332,7 @@ listen('settings', ({ payload }) => {
 });
 invoke('get_settings').then((s) => {
   cfg = s;
+  applyLook();
   render();
 });
 
@@ -425,7 +447,10 @@ function renderFocus() {
 // ---------- Sistema (system.rs) ----------
 
 // Volume and brightness hide 1.5 s after the last change, like the Figma; the rest stay 3 s.
-const NOTICE_MS = { volume: 1500, brightness: 1500, notification: 5000 };
+// Volume and brightness last "Duración de los avisos"; battery and Bluetooth bring more text, so twice that.
+const noticeMs = (kind) =>
+  ({ volume: 1, brightness: 1, charging: 2, battery_low: 2, bt_connected: 2, bt_low: 2 })[kind] * (cfg.notice_ms || 1500) ||
+  (kind === 'notification' ? 5000 : 3000);
 const BATTERY_KINDS = ['charging', 'battery_low', 'bt_connected', 'bt_low'];
 listen('system', ({ payload }) => showNotice(payload));
 // A new notification replaces the one on screen right away, like on a phone.
@@ -445,7 +470,7 @@ function showNotice(payload) {
   noticeTimer = setTimeout(() => {
     notice = null;
     render();
-  }, NOTICE_MS[payload.kind] || 3000);
+  }, noticeMs(payload.kind));
   render();
 }
 listen('batteries', ({ payload }) => {
@@ -467,6 +492,8 @@ function noticeText(n) {
       return `${n.name} conectado` + (n.battery != null ? ` · ~${n.battery} %` : '');
     case 'bt_low':
       return `${n.name}: batería baja · ${n.battery} %`;
+    case 'demo':
+      return 'Así se ven los avisos del notch';
     case 'notification':
       return [n.title || n.app, n.body].filter(Boolean).join(' — ') + (n.more ? ` (+${n.more})` : '');
   }
@@ -592,7 +619,8 @@ function render() {
   }
   const tint = media && cfg.art_color && art.color;
   // Opaque (the cover color at 35% over black) so the ears, drawn separately, match the body exactly.
-  $('notch').style.setProperty('--notch-bg', tint ? `rgb(${art.color.map((c) => Math.round(c * 0.35)).join(' ')})` : '#000');
+  const base = cfg.style === 'win11' ? 32 : 0; // Windows 11 style: dark grey like its flyouts, not black
+  $('notch').style.setProperty('--notch-bg', tint ? `rgb(${art.color.map((c) => Math.round(base + c * 0.35)).join(' ')})` : `rgb(${base} ${base} ${base})`);
   $('eq').classList.toggle('playing', playing);
   $('dot').className = `dot ${top?.state || ''}`;
   const lowNotice = notice && (notice.kind === 'battery_low' || notice.kind === 'bt_low');

@@ -34,6 +34,14 @@ html, body {
 }
 body.hidden .notch { transform: translate(-50%, calc(-100% - 4px)); }
 
+/* "Estilo del notch: Windows 11": floats below the edge, no ears, rounded all round, with a shadow.
+   Offsets match WIN11_GAP / WIN11_SHADOW in main.js. */
+.win11 .notch { top: 8px; }
+.win11 .notch::before, .win11 .notch::after { display: none; }
+.win11 .shape { border-radius: 12px; border: 1px solid rgb(255 255 255 / 0.08); box-shadow: 0 8px 20px rgb(0 0 0 / 0.35); }
+.win11 .expanded .shape, .win11.expanded .shape { border-radius: 18px; }
+body.win11.hidden .notch { transform: translate(-50%, calc(-100% - 40px)); }
+
 .notch::before, .notch::after {
   content: "";
   position: absolute;

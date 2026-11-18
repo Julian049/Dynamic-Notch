@@ -197,6 +197,31 @@ pub fn disable(app: &AppHandle) -> Result<(), String> {
     if errors.is_empty() { Ok(()) } else { Err(errors.join("\n")) }
 }
 
+/// "Probar la conexión": posts a prompt and a reply to our own hook server through HTTP, the same
+/// path Claude Code's hooks take, so it checks the server and the token, not just the island.
+#[tauri::command]
+pub async fn claude_test(app: AppHandle) -> Result<(), String> {
+    use std::io::Write;
+    let token = app.state::<AppState>().cfg.lock().unwrap().token.clone();
+    for body in [
+        json!({ "hook_event_name": "UserPromptSubmit", "session_id": "prueba-conexion", "cwd": "Prueba de conexión" }),
+        json!({ "hook_event_name": "Stop", "session_id": "prueba-conexion", "cwd": "Prueba de conexión",
+                "last_assistant_message": "La conexión con Claude Code funciona." }),
+    ] {
+        let body = body.to_string();
+        let mut s = std::net::TcpStream::connect(ADDR).map_err(|e| format!("No responde el servidor ({ADDR}): {e}"))?;
+        s.set_read_timeout(Some(std::time::Duration::from_secs(2))).ok();
+        write!(s, "POST /hook HTTP/1.1\r\nHost: x\r\nConnection: close\r\n{TOKEN_HEADER}: {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len())
+            .map_err(|e| e.to_string())?;
+        let mut status = String::new();
+        s.read_to_string(&mut status).ok();
+        if !status.starts_with("HTTP/1.1 204") {
+            return Err(format!("El servidor respondió: {}", status.lines().next().unwrap_or("nada")));
+        }
+    }
+    Ok(())
+}
+
 pub fn start(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let mut slot = state.claude_server.lock().unwrap();
