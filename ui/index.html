@@ -12,11 +12,12 @@
 <body>
   <div class="notch" id="notch">
     <div class="shape">
-      <div class="compact">
-        <img class="art-mini" id="art-mini" alt="" hidden>
+      <!-- One line, rebuilt by compactView() in main.js: lead (icon/cover) · text · equalizer · trail. -->
+      <div class="compact" id="compact">
+        <span class="slot" id="lead"></span>
+        <div class="marquee" id="marquee"><span id="line"><span id="line-main"></span><span id="line-sub"></span></span></div>
         <span class="eq" id="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-        <div class="marquee" id="marquee"><span id="line"></span></div>
-        <span class="dot" id="dot" aria-hidden="true"></span>
+        <span class="slot" id="trail"></span>
       </div>
 
       <div class="full" id="full">

@@ -3,10 +3,12 @@ const { listen } = window.__TAURI__.event;
 const $ = (id) => document.getElementById(id);
 
 // Window slack around the notch: EAR for the concave corners (--ear in style.css), PAD for the spring overshoot.
-const EAR = 10;
+const EAR = 8;
 const PAD = 14;
-const SIZE_EMPTY = [190, 32];
-const SIZE_COMPACT = [330, 34];
+const SIZE_EMPTY = [190, 30]; // Figma "None · Idle"
+// Compact height per style; the width comes from compactView() (one per Figma compact variant).
+const COMPACT_H = { classic: 34, win11: 40 };
+let compactW = 330;
 const WIDTH_EXPANDED = 460; // .full width in style.css
 const ANIM_MS = 520; // longest .shape transition in style.css
 
@@ -27,6 +29,9 @@ let received = [];
 let sending = null; // { name, sent, total } while the phone downloads; the notch collapses to show it
 let sent = ''; // "Enviado · <name>" for 3 s
 let sentTimer;
+// Unseen notifications for the bell (Figma "Music + Notifications"): one per notification that arrives
+// while the notch is not expanded. Expanding the notch shows them, so it counts them all as seen.
+let unseen = 0;
 let dropError = '';
 let dragging = false;
 let dragArmed = false; // Rust saw a drag start somewhere (maybe not a file)
@@ -49,17 +54,17 @@ function resizeWindow(w, h) {
 
 // The window grows before the notch animates and shrinks after, so the animation is never clipped
 // and the transparent window never covers more of the screen than needed for long.
-// "Tamaño" scales the whole notch (CSS zoom on .notch); "Windows 11" floats below the edge with a shadow.
+// "Tamaño" scales the whole notch (CSS zoom on .notch); "Windows 11" adds a drop shadow.
 const ZOOM = { small: 0.85, normal: 1, large: 1.2 };
-const WIN11_GAP = 8; // top offset; .win11 .notch in style.css
-const WIN11_SHADOW = 24; // room for its box-shadow
+const WIN11_SHADOW = 32; // room for its drop-shadow (.win11 .notch in style.css)
 
 async function layout() {
-  const [w, h] = expanded ? [WIDTH_EXPANDED, $('full').scrollHeight] : hasContent() ? SIZE_COMPACT : SIZE_EMPTY;
-  const z = ZOOM[cfg.size] || 1;
   const win11 = cfg.style === 'win11';
+  const idle = !expanded && !hasContent();
+  const [w, h] = expanded ? [WIDTH_EXPANDED, $('full').scrollHeight] : idle ? SIZE_EMPTY : [compactW, COMPACT_H[win11 ? 'win11' : 'classic']];
+  const z = ZOOM[cfg.size] || 1;
   let ww = Math.ceil((w + 2 * (EAR + PAD)) * z) + (win11 ? 2 * WIN11_SHADOW : 0);
-  let wh = Math.ceil((h + PAD) * z) + (win11 ? WIN11_GAP + WIN11_SHADOW : 0);
+  let wh = Math.ceil((h + PAD) * z) + (win11 ? WIN11_SHADOW : 0);
   // Cover the whole drag zone (watch_visibility in main.rs) and fit the expanded "suéltalo" notch
   // before the drag arrives: resizing while a file hovers makes Windows drop the drag target.
   if (dragArmed || dragging) (ww = Math.max(ww, 600)), (wh = Math.max(wh, 140));
@@ -69,6 +74,7 @@ async function layout() {
   const notch = $('notch');
   notch.style.setProperty('--w', `${w}px`);
   notch.style.setProperty('--h', `${h}px`);
+  notch.classList.toggle('idle', idle);
   document.body.classList.toggle('expanded', expanded);
   // No shrinking mid-drag either; render() runs again when the drag ends.
   if ((gw !== ww || gh !== wh) && !dragArmed && !dragging) shrinkTimer = setTimeout(() => resizeWindow(ww, wh), ANIM_MS);
@@ -410,7 +416,7 @@ listen('drop-sent', ({ payload }) => {
   sentTimer = setTimeout(() => {
     sent = '';
     render();
-  }, 3000);
+  }, 2000); // Figma: "Enviado" goes away after 2 s
   render();
 });
 $('drop-close').addEventListener('click', () => invoke('drop_stop'));
@@ -418,8 +424,6 @@ $('drop-close').addEventListener('click', () => invoke('drop_stop'));
 // ---------- Modo focus (timer runs in focus.rs) ----------
 
 const FOCUS_LABELS = { work: 'Focus', break: 'Descanso', long_break: 'Descanso largo' };
-const focusText = (f) =>
-  `${FOCUS_LABELS[f.phase]} · ${fmtTime(f.remaining_ms)}` + (f.away ? ' · ausente' : f.paused ? ' · en pausa' : '');
 listen('focus', ({ payload }) => {
   focus = payload || null;
   if (!focus) focusAlert = false;
@@ -456,6 +460,7 @@ listen('system', ({ payload }) => showNotice(payload));
 // A new notification replaces the one on screen right away, like on a phone.
 let notifIcon = { aumid: '', url: null };
 listen('notification', ({ payload }) => {
+  if (!expanded) unseen++;
   showNotice({ kind: 'notification', ...payload });
   if (notifIcon.aumid === payload.aumid) return;
   invoke('notif_icon', { aumid: payload.aumid }).then((buf) => {
@@ -543,10 +548,11 @@ setInterval(() => {
   for (const bar of $('eq').children) bar.style.transform = live ? `scaleY(${(0.25 + Math.random() * 0.75).toFixed(2)})` : '';
 }, 333);
 
-function setMarquee(text) {
+function setMarquee(main, sub) {
   const line = $('line');
-  if (line.textContent === text) return;
-  line.textContent = text;
+  if ($('line-main').textContent === main && $('line-sub').textContent === sub) return;
+  $('line-main').textContent = main;
+  $('line-sub').textContent = sub;
   line.classList.remove('scroll');
   const over = line.scrollWidth - $('marquee').clientWidth;
   if (over > 0) {
@@ -584,9 +590,162 @@ function renderSessions(list) {
   box.hidden = !list.length;
 }
 
-function sessionCount(list) {
-  const waitingCount = list.filter((s) => s.state === 'waiting').length;
-  return `${list.length} sesiones` + (waitingCount ? ` · ${waitingCount} esperando permiso` : '');
+// ---------- compact line (Figma "Size=Compact" variants) ----------
+
+const icon = (name, cls = '') => {
+  const i = el('span', `ic ${cls}`);
+  i.style.setProperty('--i', `url(icons/notch-${name}.svg)`);
+  return i;
+};
+const img = (name, w, h) => Object.assign(document.createElement('img'), { src: `icons/notch-${name}.svg`, width: w, height: h, alt: '' });
+const span = (cls, text) => el('span', cls, text);
+const clamp01 = (x) => Math.max(0, Math.min(1, x || 0));
+const bar = (cls, frac) => {
+  const t = el('span', `track ${cls}`);
+  const fill = el('i');
+  fill.style.width = `${clamp01(frac) * 100}%`;
+  t.append(fill);
+  return t;
+};
+const battery = (pct, cls = '') => {
+  const b = el('span', `battery ${cls}`);
+  const level = el('i');
+  level.style.width = `${19 * clamp01(pct / 100)}px`; // 19 px inside the case at 100 %
+  b.append(level);
+  return b;
+};
+const ring = (frac) => {
+  const holder = el('span');
+  const arc = (clamp01(frac) * 100).toFixed(1);
+  holder.innerHTML = `<svg class="ring" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.88" fill="none" stroke-width="2.24" style="stroke:var(--track)"/><circle cx="7" cy="7" r="5.88" fill="none" stroke-width="2.24" pathLength="100" stroke-dasharray="${arc} 100" style="stroke:var(--accent-focus)"/></svg>`;
+  return holder.firstChild;
+};
+const badged = (cls, glyph, count) => {
+  const b = el('span', `badged ${cls}`);
+  b.append(glyph, span('badge', String(count)));
+  return b;
+};
+// Kept across renders so the cover and the app icon don't reload every time.
+const coverImg = el('img', 'cover');
+const notifImg = el('img');
+// The device type is not known; the name is the only hint.
+const deviceIcon = (name, cls) => icon(/mouse|rat[oó]n|\bmx\b/i.test(name) ? 'mouse' : 'headphones', cls);
+
+function claudeView(v, list) {
+  const top = list[0];
+  if (list.length > 1) {
+    const waitingCount = list.filter((s) => s.state === 'waiting').length;
+    const dots = el('span', 'sdots');
+    dots.append(...list.map((s) => el('i', s.state)));
+    Object.assign(v, { w: 340, cls: 'g8 pl12', main: `${list.length} sesiones`, mainCls: 'shine' });
+    v.lead = [badged('', img('claude', 22, 16), list.length)];
+    v.trail = [dots];
+    if (waitingCount) v.trail.push(span('cap attn', `${waitingCount} ${waitingCount === 1 ? 'espera' : 'esperan'}`));
+    return;
+  }
+  const waiting = top.state === 'waiting';
+  const mainCls = waiting ? 'attn' : top.state === 'working' ? 'shine' : '';
+  Object.assign(v, { w: 330, cls: 'pl12', main: waiting ? 'Esperando permiso' : top.text, mainCls });
+  v.lead = [img('claude', 22, 16)];
+  v.trail = [span('cap', top.project), span('val', fmtTime(elapsedOf(top)))];
+}
+
+function noticeView(v, n) {
+  const pct = (p) => `${p} %`;
+  switch (n.kind) {
+    case 'volume':
+      v.w = 300;
+      v.lead = [icon(n.muted ? 'speaker-x' : 'speaker')];
+      v.trail = n.muted ? [bar('', 0), span('val', 'Silenciado')] : [bar('', n.level / 100), span('val num', String(n.level))];
+      return;
+    case 'brightness':
+      v.w = 300;
+      v.lead = [icon('sun')];
+      v.trail = [bar('', n.level / 100), span('val num', String(n.level))];
+      return;
+    case 'charging':
+      Object.assign(v, { w: 320, main: 'Cargando', sub: n.minutes_to_full ? `lleno en ${fmtDuration(n.minutes_to_full)}` : '', subCls: 'cap' });
+      v.lead = [icon('bolt', 'ic15 pos')];
+      v.trail = [span('val', pct(n.percent)), battery(n.percent, 'charging')];
+      return;
+    case 'battery_low':
+      Object.assign(v, { w: 320, main: 'Batería baja' });
+      v.lead = [icon('laptop', 'neg')];
+      v.trail = [span('val neg', pct(n.percent)), battery(n.percent, 'low')];
+      return;
+    case 'bt_connected':
+      Object.assign(v, { w: 320, main: n.name, sub: 'Conectado', subCls: 'cap' });
+      v.lead = [deviceIcon(n.name, '')];
+      if (n.battery != null) v.trail = [span('val', `~${pct(n.battery)}`), battery(n.battery)];
+      return;
+    case 'bt_low':
+      Object.assign(v, { w: 320, main: n.name, sub: 'Batería baja', subCls: 'cap' });
+      v.lead = [deviceIcon(n.name, 'neg')];
+      v.trail = [span('val neg', `~${pct(n.battery)}`), battery(n.battery, 'low')];
+      return;
+    case 'notification': {
+      Object.assign(v, { w: 380, cls: 'pl10', main: n.title || n.app, sub: n.title ? n.body : '', subCls: 'sec' });
+      const box = el('span', 'app-icon');
+      const url = notifIcon.aumid === n.aumid ? notifIcon.url : null;
+      if (url) {
+        if (notifImg.src !== url) notifImg.src = url;
+        box.append(notifImg);
+      } else {
+        const fallback = el('span', 'fallback');
+        fallback.append(img('bubble', 12.4, 12.4));
+        box.append(fallback);
+      }
+      v.lead = [box];
+      v.trail = [span('cap', n.more ? `+${n.more} más` : 'ahora')];
+      return;
+    }
+  }
+  v.main = noticeText(n);
+}
+
+// The compact line, most urgent first: its width (one per Figma variant) and the pieces of #compact.
+function compactView(list, lyric) {
+  const v = { w: 330, cls: '', lead: [], main: '', mainCls: '', sub: '', subCls: '', trail: [], eq: false };
+  const top = list[0];
+  if (dropError) v.main = dropError;
+  else if (dragging) v.main = 'Suelta para compartir por wifi';
+  else if (top?.state === 'waiting') claudeView(v, list);
+  else if (notice) noticeView(v, notice);
+  else if (focus && !sending && !sent) {
+    // During focus the compact shows only the timer.
+    const label = FOCUS_LABELS[focus.phase] + (focus.away ? ' · ausente' : focus.paused ? ' · en pausa' : '');
+    Object.assign(v, { w: 300, cls: 'g8', main: label });
+    v.lead = [icon('moon', 'ic15 focus-ic')];
+    v.trail = [ring(focus.total_ms ? 1 - focus.remaining_ms / focus.total_ms : 0), span('val pri', fmtTime(focus.remaining_ms))];
+  } else if (sending) {
+    const p = Math.floor((sending.sent / sending.total) * 100) || 0;
+    Object.assign(v, { w: 340, main: 'Enviando al teléfono' });
+    v.lead = [icon('phone', 'share-ic')];
+    v.trail = [bar('share', p / 100), span('val pct', `${p}%`)];
+  } else if (sent) {
+    Object.assign(v, { w: 320, cls: 'g8 pl12', main: 'Enviado', sub: sent, subCls: 'gap8' });
+    v.lead = [img('check', 18, 18)];
+  } else if (drop) v.main = 'Drop activo';
+  else if (media) {
+    // Music, or "Music + Claude": the lyric on the left, Claude on the right.
+    Object.assign(v, { w: 380, cls: art.url ? 'pl5' : '', eq: !!cfg.eq });
+    if (lyric && media.playing) v.main = lyric.cur;
+    else Object.assign(v, { main: media.title, sub: media.artist ? ` ${media.artist}` : '' });
+    if (art.url) {
+      if (coverImg.src !== art.url) coverImg.src = art.url;
+      v.lead = [coverImg];
+    }
+    if (top) {
+      Object.assign(v, { w: 440, eq: false });
+      v.trail = [el('span', 'divider'), img('claude', 18.04, 13.12), span('val', fmtTime(elapsedOf(top)))];
+    }
+  } else if (top) claudeView(v, list);
+  // Passive again with notifications not seen yet: the bell with their count.
+  if (unseen && !notice && !dropError && !dragging) {
+    v.w += 60;
+    v.trail.push(el('span', 'divider'), badged('bell', icon('bell'), unseen));
+  }
+  return v;
 }
 
 function render() {
@@ -596,33 +755,27 @@ function render() {
   const waiting = top?.state === 'waiting';
   const lyric = currentLyric();
   lastLyricIndex = lyric ? lyric.i : -2;
+  if (expanded) unseen = 0;
 
-  // Compact: one line, most urgent first.
-  let text = '';
-  if (dropError) text = dropError;
-  else if (dragging) text = 'Suelta para compartir por wifi';
-  else if (waiting) text = list.length > 1 ? sessionCount(list) : `${top.project}: esperando permiso`;
-  else if (notice) text = noticeText(notice);
-  else if (focus && !sending && !sent) text = focusText(focus); // during focus the compact shows only the timer
-  else if (sending) text = `Enviando al teléfono · ${Math.floor((sending.sent / sending.total) * 100) || 0} %`;
-  else if (sent) text = `Enviado · ${sent}`;
-  else if (drop) text = 'Drop activo';
-  else if (lyric && playing) text = lyric.cur;
-  else if (media) text = [media.title, media.artist].filter(Boolean).join(' — ');
-  else if (list.length > 1) text = sessionCount(list);
-  else if (top) text = `${top.project} · ${top.text} · ${fmtTime(elapsedOf(top))}`;
-  $('eq').hidden = !media || !cfg.eq;
+  const v = compactView(list, lyric);
+  compactW = v.w;
+  $('compact').className = `compact ${v.cls}`;
+  $('lead').replaceChildren(...v.lead);
+  $('trail').replaceChildren(...v.trail);
+  $('marquee').hidden = !v.main;
+  $('line-main').className = v.mainCls;
+  $('line-sub').className = v.subCls;
+  $('eq').hidden = !v.eq;
   const cover = media && art.url;
-  for (const id of ['art', 'art-mini']) {
-    $(id).hidden = !cover;
-    if (cover && $(id).src !== art.url) $(id).src = art.url;
-  }
+  $('art').hidden = !cover;
+  if (cover && $('art').src !== art.url) $('art').src = art.url;
   const tint = media && cfg.art_color && art.color;
   // Opaque (the cover color at 35% over black) so the ears, drawn separately, match the body exactly.
-  const base = cfg.style === 'win11' ? 32 : 0; // Windows 11 style: dark grey like its flyouts, not black
+  const base = cfg.style === 'win11' ? 44 : 0; // Windows 11 style: the acrylic grey of its flyouts (Figma V2), not black
   $('notch').style.setProperty('--notch-bg', tint ? `rgb(${art.color.map((c) => Math.round(base + c * 0.35)).join(' ')})` : `rgb(${base} ${base} ${base})`);
+  // Equalizer colour: the cover colour lifted halfway to white; the Figma default otherwise.
+  $('notch').style.setProperty('--accent-music', tint ? `rgb(${art.color.map((c) => Math.round(128 + c / 2)).join(' ')})` : '#ff9a6b');
   $('eq').classList.toggle('playing', playing);
-  $('dot').className = `dot ${top?.state || ''}`;
   const lowNotice = notice && (notice.kind === 'battery_low' || notice.kind === 'bt_low');
   $('notch').classList.toggle('alert', waiting || focusAlert || lowNotice);
 
@@ -671,7 +824,7 @@ function render() {
       : `Lo que envíes se guarda en ${drop.inbox}. Se cierra solo a los 10 minutos.`;
   }
 
-  layout().then(() => setMarquee(text));
+  layout().then(() => setMarquee(v.main, v.sub));
   broadcastSessions();
 
   // Rust keeps the island visible while something is live and wakes it when that starts.
