@@ -357,8 +357,11 @@ body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { 
 .notif { flex-direction: row; align-items: flex-start; gap: 12px; }
 .napp { position: relative; flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; font-weight: 600; color: #fff; }
 .napp > img:not(.from-phone) { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
-.from-phone { position: absolute; right: -3px; bottom: -3px; width: 45%; height: 45%; border-radius: 30%; outline: 1.5px solid #000; background: #000; object-fit: cover; }
-.app-icon .from-phone { width: 10px; height: 10px; right: -4px; bottom: -4px; }
+/* The phone logo has wide transparent margins: the img is zoomed inside a clipped box. */
+.from-phone { position: absolute; right: -4px; bottom: -4px; width: 55%; height: 55%; border-radius: 28%; overflow: hidden; background: #000; }
+.from-phone img { width: 100%; height: 100%; transform: scale(1.35); object-fit: cover; }
+.app-icon .from-phone { width: 13px; height: 13px; right: -5px; bottom: -5px; }
+.app-icon .from-phone img { width: 100%; height: 100%; border-radius: 0; }
 .napp.sm { width: 36px; height: 36px; border-radius: 10px; font-size: 16px; }
 .nhead { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; }
 .nhead .sub { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--text-3); }

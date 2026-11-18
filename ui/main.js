@@ -491,7 +491,7 @@ function loadIcon(id) {
   });
 }
 // The phone's own logo (Phone Link) in the corner of an app icon that came from the phone.
-const badgeImg = (n) => (n.badge && notifIcons[n.badge] ? [Object.assign(document.createElement('img'), { src: notifIcons[n.badge], alt: '', className: 'from-phone' })] : []);
+const badgeImg = (n) => (n.badge && notifIcons[n.badge] ? [Object.assign(document.createElement('span'), { className: 'from-phone' })].map((s) => (s.append(Object.assign(document.createElement('img'), { src: notifIcons[n.badge], alt: '' })), s)) : []);
 function showNotice(payload) {
   notice = payload;
   clearTimeout(noticeTimer);
