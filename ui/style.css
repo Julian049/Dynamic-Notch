@@ -57,18 +57,17 @@ body.hidden .notch { transform: translate(-50%, calc(-100% - 4px)); }
   background: var(--notch-bg, #000);
   border-radius: 0 0 12px 12px;
   overflow: hidden;
-  transition: width 0.34s var(--ease-out), height 0.34s var(--ease-out), border-radius 0.34s var(--ease-out),
-    box-shadow 0.3s;
+  transition: width 0.34s var(--ease-out), height 0.34s var(--ease-out), border-radius 0.34s var(--ease-out);
 }
 .expanded .shape {
   border-radius: 0 0 26px 26px;
   transition-timing-function: var(--spring);
   transition-duration: 0.5s;
 }
-.alert .shape { animation: alert 1.4s ease-in-out infinite; }
-@keyframes alert {
-  50% { box-shadow: inset 0 -2px 0 var(--waiting), 0 0 0 0 transparent; }
-}
+/* No CSS animations or transitions for anything that loops: each frame recomposes the whole transparent
+   window (measured with music playing: 15–40 % of a core). The `blink` class and the equalizer bars are
+   driven from main.js at ~3 changes per second instead (~3 %). */
+body.blink .alert .shape { box-shadow: inset 0 -2px 0 var(--waiting); }
 
 .compact, .full {
   position: absolute;
@@ -107,7 +106,8 @@ body.hidden .notch { transform: translate(-50%, calc(-100% - 4px)); }
   mask-image: linear-gradient(90deg, transparent, #000 6px, #000 calc(100% - 6px), transparent);
 }
 #line { display: inline-block; padding: 0 6px; }
-#line.scroll { animation: marquee var(--dur, 8s) linear infinite alternate; }
+/* Out and back once, not forever: a looping animation is expensive here (see the `blink` comment). */
+#line.scroll { animation: marquee var(--dur, 8s) linear 2 alternate; }
 @keyframes marquee {
   0%, 15% { transform: none; }
   85%, 100% { transform: translateX(var(--shift)); }
@@ -116,12 +116,9 @@ body.hidden .notch { transform: translate(-50%, calc(-100% - 4px)); }
 
 .eq { display: flex; align-items: flex-end; gap: 2px; height: 12px; width: 14px; flex: none; }
 .eq[hidden] { display: none; }
-.eq i { width: 2px; height: 3px; border-radius: 1px; background: var(--fg); opacity: 0.85; }
-.eq.playing i { animation: eq 0.8s ease-in-out infinite alternate; }
-.eq.playing i:nth-child(2) { animation-delay: -0.25s; }
-.eq.playing i:nth-child(3) { animation-delay: -0.5s; }
-.eq.playing i:nth-child(4) { animation-delay: -0.15s; }
-@keyframes eq { to { height: 12px; } }
+/* Bars are moved by main.js (see the `blink` comment above). */
+.eq i { width: 2px; height: 12px; border-radius: 1px; background: var(--fg); opacity: 0.85; transform: scaleY(0.25); transform-origin: bottom; }
+
 
 .media { display: flex; align-items: center; gap: 4px; }
 /* placeholder styles until the Figma redesign */
@@ -195,10 +192,10 @@ svg[hidden] { display: none; }
 
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: none; }
 .dot.working, .dot.waiting, .dot.done { display: block; }
-.dot.working { background: var(--working); animation: pulse 1.2s ease-in-out infinite; }
-.dot.waiting { background: var(--waiting); animation: pulse 0.7s ease-in-out infinite; }
+.dot.working { background: var(--working); }
+.dot.waiting { background: var(--waiting); }
 .dot.done { background: var(--done); }
-@keyframes pulse { 50% { opacity: 0.3; } }
+body.blink .dot.working, body.blink .dot.waiting { opacity: 0.3; }
 
 .drop { display: flex; gap: 16px; align-items: center; }
 .drop[hidden] { display: none; }

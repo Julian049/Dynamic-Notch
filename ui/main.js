@@ -493,6 +493,15 @@ listen('vis', ({ payload: visible }) => {
 
 // ---------- render ----------
 
+// Everything that loops moves here, ~3 times per second: a CSS animation recomposes the whole
+// transparent window every frame (measured 15–40 % of a core while music plays; ~3 % this way).
+setInterval(() => {
+  if (document.body.classList.contains('hidden')) return;
+  document.body.classList.toggle('blink');
+  const live = $('eq').classList.contains('playing') && !$('eq').hidden;
+  for (const bar of $('eq').children) bar.style.transform = live ? `scaleY(${(0.25 + Math.random() * 0.75).toFixed(2)})` : '';
+}, 333);
+
 function setMarquee(text) {
   const line = $('line');
   if (line.textContent === text) return;
