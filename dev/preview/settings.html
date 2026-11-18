@@ -1,0 +1,57 @@
+<!doctype html>
+<!-- Dev-only preview of ui/settings.html in a normal browser, with a mock of window.__TAURI__.
+     Serve the repo root over http (python3 -m http.server) and open /dev/preview/settings.html.
+     ?page=elementos opens another page; ?set=autohide:false,claude:false overrides settings (JSON values). -->
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Dynamic Notch (preview)</title>
+  <base href="../../ui/">
+  <style>
+    /* Browsers outside Windows lack Segoe: copy C:\Windows\Fonts\SegUIVar.ttf to dev/preview/shots/ (gitignored). */
+    @font-face { font-family: "Segoe UI Variable Text"; src: local("Segoe UI Variable Text"), url("../dev/preview/shots/SegUIVar.ttf"); font-weight: 300 700; }
+    @font-face { font-family: "Segoe UI Variable Display"; src: local("Segoe UI Variable Display"), url("../dev/preview/shots/SegUIVar.ttf"); font-weight: 300 700; }
+  </style>
+</head>
+<body>
+<script>
+  const params = new URLSearchParams(location.search);
+  const mock = {
+    autostart: true, monitor: '',
+    monitors: [{ name: '\\\\.\\DISPLAY1', size: '1920×1080' }, { name: '\\\\.\\DISPLAY5', size: '1920×1080' }],
+    hover: 'short', autohide: true, hide_secs: 5, notice_ms: 1500, style: 'win11', size: 'normal',
+    music: true, lyrics: true, art_color: true, eq: true,
+    claude: true, claude_targets: ['\\\\wsl$\\Ubuntu\\home\\julian\\.claude\\settings.json'],
+    claude_hooks: true, claude_server: true, claude_working: true, claude_done: true, claude_permission: true, sound: true,
+    focus: false, focus_work: 25, focus_break: 5, focus_long: 15, drop: true,
+    sys_volume: true, sys_battery: true, sys_bluetooth: true,
+    notif: true, notif_notch: true, notif_excluded: [],
+    notif_apps: { 'Claude_x!Claude': 'Claude', 'Microsoft.YourPhone_x!App': 'Phone Link' },
+    notif_access: 'allowed', version: '0.7.0',
+  };
+  for (const kv of (params.get('set') || '').split(',').filter(Boolean)) {
+    const [k, v] = kv.split(':');
+    mock[k] = JSON.parse(v);
+  }
+  window.__TAURI__ = {
+    core: {
+      invoke: async (cmd, args) => {
+        if (cmd === 'get_settings') return structuredClone(mock);
+        if (cmd === 'set_settings') return structuredClone(Object.assign(mock, args.patch));
+      },
+    },
+    event: { listen: async () => {}, emit: async () => {} },
+    window: { getCurrentWindow: () => ({ minimize() {}, toggleMaximize() {}, close() {} }) },
+  };
+  const fresh = `?t=${Date.now()}`; // the dev server lets the browser cache: always load the current files
+  document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: `settings.css${fresh}` }));
+  fetch(`settings.html${fresh}`).then((r) => r.text()).then((html) => {
+    document.body.replaceChildren(...new DOMParser().parseFromString(html, 'text/html').body.children);
+    const s = document.createElement('script');
+    s.src = `settings.js${fresh}`;
+    s.onload = () => params.get('page') && document.querySelector(`.nav-item[data-go="${params.get('page')}"]`).click();
+    document.body.append(s);
+  });
+</script>
+</body>
+</html>

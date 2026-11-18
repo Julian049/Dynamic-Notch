@@ -22,7 +22,7 @@ function fill(s) {
     if (el.type === 'checkbox') el.checked = !!s[el.dataset.key];
     else el.value = String(s[el.dataset.key]);
     el.disabled = el.dataset.needs ? !s[el.dataset.needs] : false;
-    el.closest('.row, .card').classList.toggle('off', el.disabled);
+    el.closest('.row, .card')?.classList.toggle('off', el.disabled); // the hidden style select has neither
   }
   $('style-name').textContent = $('style').selectedOptions[0]?.text ?? '';
   for (const b of document.querySelectorAll('[data-style]')) b.classList.toggle('selected', b.dataset.style === s.style);
