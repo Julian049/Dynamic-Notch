@@ -2,8 +2,11 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const $ = (id) => document.getElementById(id);
 
+const SWITCHES = ['autostart', 'autohide', 'claude', 'sound', 'music', 'lyrics', 'art_color', 'eq'];
+
 function fill(s) {
-  for (const key of ['autostart', 'autohide', 'claude', 'sound']) $(key).checked = !!s[key];
+  for (const key of SWITCHES) ($(key).checked = !!s[key]), ($(key).disabled = false); // save() disabled them
+  for (const key of ['lyrics', 'art_color', 'eq']) $(key).disabled = !s.music;
   if (document.activeElement !== $('hide_secs')) $('hide_secs').value = s.hide_secs;
   $('hide_secs').disabled = !s.autohide;
   const found = s.claude_targets.length > 0;
@@ -26,7 +29,7 @@ async function save(patch) {
   }
 }
 
-for (const key of ['autostart', 'autohide', 'claude', 'sound']) {
+for (const key of SWITCHES) {
   $(key).addEventListener('change', (e) => save({ [key]: e.target.checked }));
 }
 $('hide_secs').addEventListener('change', (e) => {

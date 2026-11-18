@@ -54,7 +54,7 @@ body.hidden .notch { transform: translate(-50%, calc(-100% - 4px)); }
   position: relative;
   width: var(--w, 190px);
   height: var(--h, 32px);
-  background: #000;
+  background: linear-gradient(var(--tint, transparent), var(--tint, transparent)), #000;
   border-radius: 0 0 12px 12px;
   overflow: hidden;
   transition: width 0.34s var(--ease-out), height 0.34s var(--ease-out), border-radius 0.34s var(--ease-out),
@@ -124,6 +124,12 @@ body.hidden .notch { transform: translate(-50%, calc(-100% - 4px)); }
 @keyframes eq { to { height: 12px; } }
 
 .media { display: flex; align-items: center; gap: 4px; }
+/* placeholder styles until the Figma redesign */
+.art { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex: none; margin-right: 6px; }
+.art-mini { width: 20px; height: 20px; border-radius: 5px; object-fit: cover; flex: none; }
+.art[hidden], .art-mini[hidden], .progress[hidden] { display: none; }
+.progress { display: flex; align-items: center; gap: 8px; color: var(--fg-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+.progress progress { flex: 1; height: 4px; accent-color: var(--fg); }
 .media[hidden] { display: none; }
 .track { flex: 1; min-width: 0; }
 .title, .artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -21,6 +21,7 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 windows = { version = "0.61", features = [
     "Media_Control",
     "Foundation",
+    "Storage_Streams",
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",

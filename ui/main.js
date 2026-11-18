@@ -10,9 +10,10 @@ const SIZE_COMPACT = [330, 34];
 const WIDTH_EXPANDED = 460; // .full width in style.css
 const ANIM_MS = 520; // longest .shape transition in style.css
 
-let cfg = { claude: false };
+let cfg = { claude: false, music: true, lyrics: true, art_color: true, eq: true };
 let media = null; // { title, artist, playing, duration_ms, position_ms, at }
 let lyrics = { key: '', lines: null };
+let art = { rev: -1, url: null, color: null }; // cover as a blob: URL and its dominant [r, g, b]
 const sessions = new Map(); // session_id → { state: 'working'|'waiting'|'done', project, text, detail }
 let drop = null; // { url, qr, files, inbox }
 let received = [];
@@ -76,6 +77,7 @@ document.documentElement.addEventListener('mouseleave', () => {
 
 $('toggle').addEventListener('click', () => invoke('media_control', { action: 'toggle' }));
 $('next').addEventListener('click', () => invoke('media_control', { action: 'next' }));
+$('prev').addEventListener('click', () => invoke('media_control', { action: 'prev' }));
 
 function positionNow() {
   if (!media) return 0;
@@ -83,6 +85,7 @@ function positionNow() {
 }
 
 async function loadLyrics(m) {
+  if (!cfg.lyrics) return; // off: nothing goes to lrclib
   const key = `${m.artist}\u0000${m.title}`;
   if (lyrics.key === key) return;
   lyrics = { key, lines: null };
@@ -98,27 +101,72 @@ async function loadLyrics(m) {
 }
 
 function currentLyric() {
-  if (!lyrics.lines) return null;
+  if (!cfg.lyrics || !lyrics.lines) return null;
   const i = lineAt(lyrics.lines, positionNow());
   const at = (k) => (k < 0 ? '' : lyrics.lines[k]?.text || (k < lyrics.lines.length ? '♪' : ''));
   return { i, prev: at(i - 1), cur: i < 0 ? '♪' : at(i), next: at(i + 1) };
 }
 
-listen('media', ({ payload }) => {
+// Rust bumps art_rev when the cover changes (or arrives late); the bytes come from media_art.
+async function loadArt(rev) {
+  art.rev = rev;
+  const buf = await invoke('media_art').catch(() => null);
+  const url = buf?.byteLength ? URL.createObjectURL(new Blob([buf])) : null;
+  const color = url ? await coverColor(url).catch(() => null) : null;
+  if (art.rev !== rev) return url && URL.revokeObjectURL(url); // a newer cover won
+  if (art.url) URL.revokeObjectURL(art.url);
+  art = { rev, url, color };
+  render();
+}
+
+function coverColor(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = c.height = 24;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0, 24, 24);
+      resolve(dominantColor(ctx.getImageData(0, 0, 24, 24).data));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+const fmtTime = (ms) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+function renderProgress() {
+  const d = media?.duration_ms || 0;
+  $('progress').hidden = !d;
+  if (!d) return;
+  const p = Math.min(positionNow(), d);
+  $('elapsed').textContent = fmtTime(p);
+  $('remaining').textContent = `-${fmtTime(d - p)}`;
+  $('bar').value = p / d;
+}
+
+function onMedia(payload) {
   const changed = payload?.title !== media?.title || payload?.artist !== media?.artist;
-  media = payload && payload.title ? payload : null;
+  media = cfg.music && payload && payload.title ? payload : null;
   if (changed) {
     if (media) loadLyrics(media);
     else lyrics = { key: '', lines: null };
   }
+  if (media && media.art_rev !== art.rev) loadArt(media.art_rev);
   render();
-});
+}
+listen('media', ({ payload }) => onMedia(payload));
 
 // Advance the lyric line between the once-a-second media updates.
 let lastLyricIndex = -2;
 setInterval(() => {
   const l = currentLyric();
   if (l && l.i !== lastLyricIndex) render();
+  else if (expanded) renderProgress();
 }, 200);
 
 // ---------- Claude Code ----------
@@ -198,8 +246,11 @@ listen('claude', ({ payload: p }) => {
 });
 
 listen('settings', ({ payload }) => {
+  const lyricsWasOn = cfg.lyrics;
   cfg = payload;
   if (!cfg.claude) sessions.clear();
+  if (!cfg.music) media = null; // the next media tick brings it back when turned on
+  if (media && cfg.lyrics && !lyricsWasOn) (lyrics.key = ''), loadLyrics(media);
   render();
 });
 invoke('get_settings').then((s) => {
@@ -334,7 +385,14 @@ function render() {
   else if (lyric && playing) text = lyric.cur;
   else if (media) text = [media.title, media.artist].filter(Boolean).join(' — ');
   else if (top) text = `${top.project} · ${top.text}`;
-  $('eq').hidden = !media;
+  $('eq').hidden = !media || !cfg.eq;
+  const cover = media && art.url;
+  for (const id of ['art', 'art-mini']) {
+    $(id).hidden = !cover;
+    if (cover && $(id).src !== art.url) $(id).src = art.url;
+  }
+  const tint = media && cfg.art_color && art.color;
+  $('notch').style.setProperty('--tint', tint ? `rgb(${art.color.join(' ')} / 0.35)` : 'transparent');
   $('eq').classList.toggle('playing', playing);
   $('dot').className = `dot ${top?.state || ''}`;
   $('notch').classList.toggle('alert', waiting);
@@ -347,6 +405,8 @@ function render() {
   // SVG elements have no .hidden property; toggle the attribute.
   $('icon-play').toggleAttribute('hidden', playing);
   $('icon-pause').toggleAttribute('hidden', !playing);
+  renderProgress();
+  if (dragging) $('progress').hidden = true;
   $('lyrics').hidden = !(lyric && media);
   if (lyric) {
     $('ly-prev').textContent = lyric.prev;

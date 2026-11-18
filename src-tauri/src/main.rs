@@ -36,13 +36,18 @@ pub struct Config {
     pub sound: bool,
     pub autohide: bool,
     pub hide_secs: u64,
+    pub music: bool,
+    pub lyrics: bool,
+    /// Tint the notch with the cover's colors.
+    pub art_color: bool,
+    pub eq: bool,
     /// Sent by our Claude Code hooks; persisted because it is written into settings.json.
     pub token: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { claude: false, sound: true, autohide: true, hide_secs: 10, token: String::new() }
+        Config { claude: false, sound: true, autohide: true, hide_secs: 10, music: true, lyrics: true, art_color: true, eq: true, token: String::new() }
     }
 }
 
@@ -222,6 +227,10 @@ fn settings_json(app: &AppHandle, targets: &[PathBuf]) -> Value {
         "sound": c.sound,
         "autohide": c.autohide,
         "hide_secs": c.hide_secs,
+        "music": c.music,
+        "lyrics": c.lyrics,
+        "art_color": c.art_color,
+        "eq": c.eq,
         "autostart": app.autolaunch().is_enabled().unwrap_or(false),
         "claude_targets": targets.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
     })
@@ -241,11 +250,17 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
         let al = app.autolaunch();
         if on { al.enable() } else { al.disable() }.map_err(|e| e.to_string())?;
     }
-    if let Some(b) = patch["sound"].as_bool() {
-        cfg.sound = b;
-    }
-    if let Some(b) = patch["autohide"].as_bool() {
-        cfg.autohide = b;
+    for (key, field) in [
+        ("sound", &mut cfg.sound),
+        ("autohide", &mut cfg.autohide),
+        ("music", &mut cfg.music),
+        ("lyrics", &mut cfg.lyrics),
+        ("art_color", &mut cfg.art_color),
+        ("eq", &mut cfg.eq),
+    ] {
+        if let Some(b) = patch[key].as_bool() {
+            *field = b;
+        }
     }
     if let Some(n) = patch["hide_secs"].as_u64() {
         cfg.hide_secs = n.clamp(2, 3600);
@@ -333,6 +348,7 @@ fn main() {
             lyrics_get,
             lyrics_put,
             media::media_control,
+            media::media_art,
             drop::drop_stop,
         ])
         .on_window_event(|w, e| match (w.label(), e) {
@@ -354,6 +370,7 @@ fn main() {
                 claude_server: Mutex::new(None),
                 drop: Mutex::new(None),
             });
+            app.manage(media::Art::default());
             if first_run {
                 // "Iniciar con Windows" is on by default.
                 if let Err(e) = handle.autolaunch().enable() {

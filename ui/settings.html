@@ -27,6 +27,25 @@
 
     <section>
       <label class="row">
+        <span class="text"><b>Música</b><small>Carátula, letra y controles de lo que está sonando.</small></span>
+        <input type="checkbox" role="switch" id="music">
+      </label>
+      <label class="row">
+        <span class="text"><b>Letra sincronizada</b><small>Consulta lrclib.net con el título y el artista.</small></span>
+        <input type="checkbox" role="switch" id="lyrics">
+      </label>
+      <label class="row">
+        <span class="text"><b>Color de la carátula de fondo</b><small>Tiñe el notch con los colores del álbum.</small></span>
+        <input type="checkbox" role="switch" id="art_color">
+      </label>
+      <label class="row">
+        <span class="text"><b>Ecualizador animado</b></span>
+        <input type="checkbox" role="switch" id="eq">
+      </label>
+    </section>
+
+    <section>
+      <label class="row">
         <span class="text"><b>Integración con Claude Code</b><small id="claude-note">Buscando instalaciones…</small></span>
         <input type="checkbox" role="switch" id="claude" disabled>
       </label>

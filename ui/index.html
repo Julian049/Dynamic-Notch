@@ -5,12 +5,14 @@
   <title>Dynamic Island</title>
   <link rel="stylesheet" href="style.css">
   <script src="lyrics.js" defer></script>
+  <script src="art.js" defer></script>
   <script src="main.js" defer></script>
 </head>
 <body>
   <div class="notch" id="notch">
     <div class="shape">
       <div class="compact">
+        <img class="art-mini" id="art-mini" alt="" hidden>
         <span class="eq" id="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
         <div class="marquee" id="marquee"><span id="line"></span></div>
         <span class="dot" id="dot" aria-hidden="true"></span>
@@ -20,10 +22,14 @@
         <!-- placeholder: crude on purpose until the Figma redesign -->
         <div id="drag-hint" hidden style="font-size:20px;padding:16px 0;text-align:center">SUÉLTALO AQUÍ</div>
         <div class="media" id="media">
+          <img class="art" id="art" alt="" hidden>
           <div class="track">
             <div class="title" id="title">Nada sonando</div>
             <div class="artist" id="artist"></div>
           </div>
+          <button id="prev" aria-label="Anterior">
+            <svg viewBox="0 0 24 24"><path d="M18 6l-8.5 6L18 18zM6 6h2v12H6z"/></svg>
+          </button>
           <button id="toggle" aria-label="Reproducir o pausar">
             <svg viewBox="0 0 24 24" id="icon-play"><path d="M8 5v14l11-7z"/></svg>
             <svg viewBox="0 0 24 24" id="icon-pause" hidden><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
@@ -31,6 +37,9 @@
           <button id="next" aria-label="Siguiente">
             <svg viewBox="0 0 24 24"><path d="M6 6l8.5 6L6 18zM16 6h2v12h-2z"/></svg>
           </button>
+        </div>
+        <div class="progress" id="progress" hidden>
+          <span id="elapsed"></span><progress id="bar" max="1" value="0"></progress><span id="remaining"></span>
         </div>
 
         <div class="lyrics" id="lyrics" hidden>
