@@ -1,0 +1,124 @@
+<!doctype html>
+<!-- Dev only (not embedded in the .exe): the real ui/ island with a fake Tauri, one compact state per
+     ?scenario=, in ?style=classic|win11. Meant to run inside an iframe (index.html), which plays the
+     transparent window: resize() sets the iframe size. Serve the repo root: python3 -m http.server -->
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Isla · preview</title>
+  <base href="../../ui/">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Windows' own font when copied to dev/preview/shots/ (gitignored); system fallback otherwise. */
+    @font-face { font-family: "Segoe UI Variable Text"; src: url("/dev/preview/shots/SegUIVar.ttf"); font-weight: 100 900; }
+  </style>
+</head>
+<body>
+<script>
+{ // a block: main.js and friends declare their own top-level names
+const params = new URLSearchParams(location.search);
+const style = params.get('style') || 'classic';
+const scenario = params.get('scenario') || 'idle';
+
+const handlers = {};
+const settings = {
+  style, size: 'normal', claude: true, music: true, lyrics: true, art_color: true, eq: true,
+  claude_working: true, claude_done: true, claude_permission: true, notice_ms: 1500, hover: 'short',
+  drop: true, notif: true, focus: true,
+};
+
+// A cover like the Figma one (pink to orange), as the bytes media_art would return.
+function coverBytes() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 64, 64);
+  grad.addColorStop(0, '#8e3bd6');
+  grad.addColorStop(0.5, '#e8457c');
+  grad.addColorStop(1, '#ff9a4c');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return new Promise((r) => c.toBlob((b) => r(b.arrayBuffer())));
+}
+
+window.__TAURI__ = {
+  core: {
+    invoke(cmd, args) {
+      switch (cmd) {
+        case 'get_settings': return Promise.resolve(settings);
+        case 'resize':
+          if (window.frameElement) Object.assign(window.frameElement.style, { width: `${args.width}px`, height: `${args.height}px` });
+          return Promise.resolve(null);
+        case 'media_art': return coverBytes();
+        case 'lyrics_get': return Promise.resolve('[00:00.00]y el cielo se encendió de neón\n[01:00.00]♪');
+        default: return Promise.resolve(null);
+      }
+    },
+  },
+  event: {
+    listen(name, fn) { (handlers[name] ||= []).push(fn); return Promise.resolve(() => {}); },
+    emit() { return Promise.resolve(); },
+  },
+};
+window.fire = (name, payload) => (handlers[name] || []).forEach((fn) => fn({ payload }));
+
+const song = () => ({ title: 'Neón', artist: 'Zoé', playing: true, duration_ms: 240000, position_ms: 5000, at: Date.now(), art_rev: 1 });
+const claudeEvent = (id, hook, extra = {}) => fire('claude', { session_id: id, cwd: '/home/julian/notch-app', hook_event_name: hook, ...extra });
+// main.js keeps its state in top-level bindings, reachable from here: backdate the turn clocks to 2:14.
+const backdate = () => sessions.forEach((s) => (s.started -= 134000));
+
+const SCENARIOS = {
+  idle() {},
+  volume: () => fire('system', { kind: 'volume', level: 62, muted: false }),
+  mute: () => fire('system', { kind: 'volume', level: 62, muted: true }),
+  brightness: () => fire('system', { kind: 'brightness', level: 70 }),
+  music: () => fire('media', song()),
+  'music-claude'() {
+    fire('media', song());
+    claudeEvent('a', 'UserPromptSubmit');
+    backdate();
+  },
+  'claude-working'() {
+    claudeEvent('a', 'PreToolUse', { tool_name: 'Trabajando…' });
+    backdate();
+  },
+  'claude-sessions'() {
+    claudeEvent('a', 'UserPromptSubmit');
+    claudeEvent('b', 'UserPromptSubmit');
+    claudeEvent('c', 'Notification', { notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
+  },
+  focus: () => fire('focus', { phase: 'work', remaining_ms: 24 * 60000 + 12000, total_ms: 25 * 60000, paused: false, away: false, cycle: 1, cycles: 4 }),
+  'share-sending': () => fire('drop-sending', { name: 'Propuesta-final.pdf', sent: 64, total: 100 }),
+  'share-done': () => fire('drop-sent', 'Propuesta-final.pdf'),
+  'battery-charging': () => fire('system', { kind: 'charging', percent: 78, minutes_to_full: 40 }),
+  'battery-low': () => fire('system', { kind: 'battery_low', percent: 10 }),
+  bluetooth: () => fire('system', { kind: 'bt_connected', name: 'AirPods Pro', battery: 80 }),
+  'device-low': () => fire('system', { kind: 'bt_low', name: 'Mouse MX', battery: 15 }),
+  notification: () => fire('notification', { app: 'WhatsApp', aumid: 'wa', title: 'Mamá', body: '¿Ya saliste de la oficina? Te guardé almuerzo', more: 0 }),
+  'music-notif'() {
+    fire('media', song());
+    unseen = 3;
+  },
+};
+
+(async () => {
+  const doc = new DOMParser().parseFromString(await (await fetch('index.html')).text(), 'text/html');
+  document.body.insertAdjacentHTML('afterbegin', doc.body.innerHTML);
+  for (const src of ['lyrics.js', 'art.js', 'summary.js', 'main.js']) {
+    await new Promise((resolve, reject) => {
+      const s = Object.assign(document.createElement('script'), { src, onload: resolve, onerror: reject });
+      document.head.append(s);
+    });
+  }
+  await new Promise((r) => setTimeout(r, 50)); // get_settings has resolved
+  SCENARIOS[scenario]();
+  // Notices and "Enviado" go away by themselves; a preview keeps them on screen.
+  clearTimeout(noticeTimer);
+  clearTimeout(sentTimer);
+  render();
+  document.documentElement.dataset.ready = '1';
+})();
+}
+</script>
+</body>
+</html>

@@ -45,14 +45,16 @@ html, body {
 }
 body.hidden .notch { transform: translate(-50%, calc(-100% - 4px)); }
 
-/* "Estilo del notch: Windows 11" (Figma "Dynamic Notch V2"): same shape language as Windows 11 flyouts:
-   acrylic grey, radius 8, 40 px tall, Segoe at 14 px, with a shadow. The shadow fits in WIN11_SHADOW (main.js). */
-.win11 .notch { filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.24)) drop-shadow(0 16px 16px rgb(0 0 0 / 0.28)); }
-.win11 .shape { border-radius: 0 0 8px 8px; }
-.win11.expanded .shape { border-radius: 0 0 16px 16px; }
+/* "Estilo del notch: Windows 11": the colours and type of Figma "Dynamic Notch V2" (Windows 11 flyout grey,
+   Segoe at 14 px, 40 px tall, with a shadow), but floating below the top edge as a pill, without ears
+   (the user's call over the Figma). The gap is WIN11_GAP and the shadow fits in WIN11_SHADOW (main.js). */
+.win11 .notch { top: 8px; filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.24)) drop-shadow(0 16px 16px rgb(0 0 0 / 0.28)); }
+.win11 .notch::before, .win11 .notch::after { display: none; }
+.win11 .shape { border-radius: 20px; }
+.win11.expanded .shape { border-radius: 16px; }
 body.win11.hidden .notch { transform: translate(-50%, calc(-100% - 40px)); }
 .win11 { --text-2: rgb(255 255 255 / 0.79); --text-3: rgb(255 255 255 / 0.54); }
-.win11 .compact { gap: 12px; padding: 0 12px 0 8px; font-size: 14px; font-weight: 400; }
+.win11 .compact { gap: 12px; font-size: 14px; font-weight: 400; }
 .win11 .cover { width: 24px; height: 24px; border-radius: 4px; border: 0; }
 .win11 .eq { --eq-c: var(--text-2); }
 .win11 .eq i { width: 2px; border-radius: 1px; }
@@ -101,7 +103,9 @@ body.blink .alert .shape { box-shadow: inset 0 -2px 0 var(--attention); }
   transition: opacity 0.18s;
 }
 .compact {
-  right: 0;
+  /* The final width, not the animated one: the line is laid out (and the marquee measured) at its end size. */
+  width: var(--w);
+  box-sizing: border-box;
   bottom: 0;
   display: flex;
   align-items: center;
@@ -141,7 +145,7 @@ body.blink .alert .shape { box-shadow: inset 0 -2px 0 var(--attention); }
 /* Mascot with the session count; the bell with the unseen notifications. */
 .badged { position: relative; flex: none; width: 34px; height: 18px; }
 .badged > img, .badged > .ic { position: absolute; left: 0; top: 1px; }
-.badge { position: absolute; left: 19px; top: -5px; box-sizing: border-box; height: 16px; min-width: 16px; padding: 0 5px; border: 2px solid var(--notch-bg, #000); border-radius: 999px; background: var(--accent-claude); color: #000; font-size: 11px; line-height: 12px; text-align: center; }
+.badge { position: absolute; left: 18px; top: -6px; box-sizing: border-box; height: 18px; min-width: 18px; padding: 0 5px; border: 2px solid var(--notch-bg, #000); border-radius: 999px; background: var(--accent-claude); color: #000; font-size: 11px; line-height: 14px; text-align: center; }
 .badged.bell { width: 26px; }
 .badged.bell .badge { left: 10px; top: -4px; height: 15px; min-width: 15px; padding: 0 4px; background: var(--negative); color: var(--text-1); font-size: 10px; line-height: 11px; }
 .sdots { display: flex; gap: 4px; flex: none; }
@@ -149,7 +153,9 @@ body.blink .alert .shape { box-shadow: inset 0 -2px 0 var(--attention); }
 .sdots i.waiting { background: var(--attention); }
 .sdots i.done { background: var(--done); }
 .val.pri { color: var(--text-1); }
-.win11 .notch.idle .shape { border-radius: 0 0 8px 8px; }
+.win11 .notch.idle .shape { border-radius: 15px; }
+/* The cover keeps the same inset from the rounded end as from the top and bottom. */
+.win11 .compact.pl5 { padding-left: 8px; }
 .attn { color: var(--attention); }
 .ring { width: 14px; height: 14px; flex: none; transform: rotate(-90deg); }
 .app-icon { position: relative; width: 20px; height: 20px; flex: none; }
@@ -174,8 +180,12 @@ body.blink .alert .shape { box-shadow: inset 0 -2px 0 var(--attention); }
   overflow: hidden;
   white-space: nowrap;
   mask-image: linear-gradient(90deg, transparent, #000 6px, #000 calc(100% - 6px), transparent);
+  margin: 0 -6px; /* the fade zones sit in the gaps, so the text starts where the Figma puts it */
 }
 #line { display: inline-block; padding: 0 6px; }
+/* A notification is cut with an ellipsis (Figma), not scrolled. */
+.compact.ell .marquee { text-overflow: ellipsis; padding: 0 6px; mask-image: none; }
+.compact.ell #line { display: inline; padding: 0; }
 #line-sub { color: var(--text-3); }
 #line-sub.sec { color: var(--text-2); margin-left: 7px; }
 #line-sub.gap8 { margin-left: 8px; }

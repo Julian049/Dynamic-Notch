@@ -44,7 +44,7 @@ let shrinkTimer;
 // ---------- sizing ----------
 
 function hasContent() {
-  return !!(media || claudeSessions().length || drop || dragging || focus || notice);
+  return !!(media || claudeSessions().length || drop || sending || sent || dragging || focus || notice);
 }
 
 function resizeWindow(w, h) {
@@ -54,9 +54,10 @@ function resizeWindow(w, h) {
 
 // The window grows before the notch animates and shrinks after, so the animation is never clipped
 // and the transparent window never covers more of the screen than needed for long.
-// "Tamaño" scales the whole notch (CSS zoom on .notch); "Windows 11" adds a drop shadow.
+// "Tamaño" scales the whole notch (CSS zoom on .notch); "Windows 11" floats lower and adds a drop shadow.
 const ZOOM = { small: 0.85, normal: 1, large: 1.2 };
 const WIN11_SHADOW = 32; // room for its drop-shadow (.win11 .notch in style.css)
+const WIN11_GAP = 8; // it floats this far below the top edge (.win11 .notch in style.css)
 
 async function layout() {
   const win11 = cfg.style === 'win11';
@@ -64,7 +65,7 @@ async function layout() {
   const [w, h] = expanded ? [WIDTH_EXPANDED, $('full').scrollHeight] : idle ? SIZE_EMPTY : [compactW, COMPACT_H[win11 ? 'win11' : 'classic']];
   const z = ZOOM[cfg.size] || 1;
   let ww = Math.ceil((w + 2 * (EAR + PAD)) * z) + (win11 ? 2 * WIN11_SHADOW : 0);
-  let wh = Math.ceil((h + PAD) * z) + (win11 ? WIN11_SHADOW : 0);
+  let wh = Math.ceil((h + PAD + (win11 ? WIN11_GAP : 0)) * z) + (win11 ? WIN11_SHADOW : 0);
   // Cover the whole drag zone (watch_visibility in main.rs) and fit the expanded "suéltalo" notch
   // before the drag arrives: resizing while a file hovers makes Windows drop the drag target.
   if (dragArmed || dragging) (ww = Math.max(ww, 600)), (wh = Math.max(wh, 140));
@@ -684,7 +685,7 @@ function noticeView(v, n) {
       v.trail = [span('val neg', `~${pct(n.battery)}`), battery(n.battery, 'low')];
       return;
     case 'notification': {
-      Object.assign(v, { w: 380, cls: 'pl10', main: n.title || n.app, sub: n.title ? n.body : '', subCls: 'sec' });
+      Object.assign(v, { w: 380, cls: 'pl10 ell', main: n.title || n.app, sub: n.title ? n.body : '', subCls: 'sec' });
       const box = el('span', 'app-icon');
       const url = notifIcon.aumid === n.aumid ? notifIcon.url : null;
       if (url) {
@@ -716,7 +717,7 @@ function compactView(list, lyric) {
     const label = FOCUS_LABELS[focus.phase] + (focus.away ? ' · ausente' : focus.paused ? ' · en pausa' : '');
     Object.assign(v, { w: 300, cls: 'g8', main: label });
     v.lead = [icon('moon', 'ic15 focus-ic')];
-    v.trail = [ring(focus.total_ms ? 1 - focus.remaining_ms / focus.total_ms : 0), span('val pri', fmtTime(focus.remaining_ms))];
+    v.trail = [ring(focus.total_ms ? focus.remaining_ms / focus.total_ms : 0), span('val pri', fmtTime(focus.remaining_ms))];
   } else if (sending) {
     const p = Math.floor((sending.sent / sending.total) * 100) || 0;
     Object.assign(v, { w: 340, main: 'Enviando al teléfono' });
