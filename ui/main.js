@@ -745,7 +745,9 @@ function appTile(aumid, name, cls = '', badge = []) {
 }
 
 function renderNotif() {
-  $('notif-icon').replaceWith(Object.assign(appTile(notice.aumid, notice.app, '', badgeImg(notice)), { id: 'notif-icon' }));
+  // Replaced only when it changed: a new direct child of the view would restart its entry animation (a flicker).
+  const tile = Object.assign(appTile(notice.aumid, notice.app, '', badgeImg(notice)), { id: 'notif-icon' });
+  if ($('notif-icon').outerHTML !== tile.outerHTML) $('notif-icon').replaceWith(tile);
   $('notif-title').textContent = notice.title || notice.app;
   $('notif-app').textContent = notice.title && !notice.more ? notice.app : '';
   $('notif-count').hidden = !notice.more;
