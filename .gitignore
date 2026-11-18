@@ -12,3 +12,6 @@
 # Sistema
 Thumbs.db
 desktop.ini
+
+# Capturas de la vista previa de Ajustes (solo desarrollo)
+/dev/preview/shots/
