@@ -20,7 +20,8 @@ const MARK: &str = "src=dynamic-island";
 const URL: &str = "http://127.0.0.1:27823/hook?src=dynamic-island";
 const TOKEN_HEADER: &str = "X-Island-Token";
 const EVENTS: [&str; 5] = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop"];
-const MAX_BODY: u64 = 256 * 1024;
+// PostToolUse carries the whole edited file (originalFile), so this must fit large files.
+const MAX_BODY: u64 = 16 * 1024 * 1024;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 fn wsl_distros() -> Vec<String> {
@@ -102,6 +103,50 @@ pub fn add_ours(settings: &mut Value, token: &str) -> Result<(), String> {
         }]}));
     }
     Ok(())
+}
+
+/// Our hooks are in `settings` for every event, with this token.
+pub fn installed(settings: &Value, token: &str) -> bool {
+    EVENTS.iter().all(|e| {
+        settings["hooks"][e].as_array().into_iter().flatten().any(|g| {
+            g["hooks"].as_array().into_iter().flatten().any(|h| is_ours(h) && h["headers"][TOKEN_HEADER] == token)
+        })
+    })
+}
+
+/// Every target settings.json has our hooks with this token.
+pub fn hooks_installed(targets: &[PathBuf], token: &str) -> bool {
+    !targets.is_empty()
+        && targets.iter().all(|p| {
+            fs::read_to_string(p).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).is_some_and(|v| installed(&v, token))
+        })
+}
+
+/// Drops the bulky parts of a hook payload (file contents, patches) before it goes to the UI,
+/// keeping what it shows: the file path and, for edits, `lines_added` / `lines_removed`.
+pub fn slim(v: &mut Value) {
+    let Some(o) = v.as_object_mut() else { return };
+    if let Some(resp) = o.shift_remove("tool_response") {
+        let patch = resp["structuredPatch"].as_array();
+        let created = resp["type"] == "create"; // Write of a new file: empty patch, every line is new
+        if patch.is_some() || created {
+            let mut added = if created { resp["content"].as_str().map_or(0, |c| c.lines().count()) } else { 0 };
+            let mut removed = 0;
+            let lines = patch.into_iter().flatten().flat_map(|h| h["lines"].as_array().into_iter().flatten());
+            for l in lines.filter_map(Value::as_str) {
+                match l.as_bytes().first() {
+                    Some(b'+') => added += 1,
+                    Some(b'-') => removed += 1,
+                    _ => {}
+                }
+            }
+            o.insert("lines_added".into(), added.into());
+            o.insert("lines_removed".into(), removed.into());
+        }
+    }
+    if let Some(input) = o.get_mut("tool_input").and_then(Value::as_object_mut) {
+        input.retain(|k, _| k == "file_path");
+    }
 }
 
 /// Rewrites one settings.json: always strips our hooks, then adds them back if `token` is given.
@@ -196,11 +241,21 @@ fn serve(app: AppHandle, server: Arc<tiny_http::Server>) {
                 .and_then(|_| serde_json::from_str::<Value>(&body).ok())
                 .filter(Value::is_object);
             match parsed {
-                Some(v) => {
-                    if cfg.sound && v["hook_event_name"] == "Stop" {
-                        beep();
+                Some(mut v) => {
+                    let event = v["hook_event_name"].as_str().unwrap_or("");
+                    // Same split as the "Cuándo mostrarlo" switches; the UI hides what they turn off.
+                    let shown = match event {
+                        "Stop" => cfg.claude_done,
+                        "Notification" => cfg.claude_permission,
+                        _ => cfg.claude_working,
+                    };
+                    if shown {
+                        if cfg.sound && event == "Stop" {
+                            beep();
+                        }
+                        crate::wake(&app);
                     }
-                    crate::wake(&app);
+                    slim(&mut v);
                     let _ = app.emit_to("island", "claude", &v);
                     204
                 }
@@ -245,6 +300,41 @@ mod tests {
         let mut v = json!({ "hooks": { "Stop": [] } });
         strip_ours(&mut v);
         assert_eq!(v, json!({ "hooks": { "Stop": [] } }));
+    }
+
+    #[test]
+    fn installed_needs_every_event_with_this_token() {
+        let mut v = json!({});
+        assert!(!installed(&v, "tok"));
+        add_ours(&mut v, "tok").unwrap();
+        assert!(installed(&v, "tok"));
+        assert!(!installed(&v, "other"));
+        v["hooks"].as_object_mut().unwrap().shift_remove("Stop");
+        assert!(!installed(&v, "tok"));
+    }
+
+    #[test]
+    fn slim_counts_edit_and_create_lines_and_drops_contents() {
+        let mut edit = json!({
+            "hook_event_name": "PostToolUse",
+            "tool_input": { "file_path": "/a.txt", "old_string": "hola", "new_string": "buenas" },
+            "tool_response": { "originalFile": "hola\nadiós\n", "structuredPatch": [
+                { "lines": ["-hola", "+buenas", "+otra", " adiós"] }
+            ]}
+        });
+        slim(&mut edit);
+        assert_eq!(edit, json!({
+            "hook_event_name": "PostToolUse",
+            "tool_input": { "file_path": "/a.txt" },
+            "lines_added": 2, "lines_removed": 1
+        }));
+        let mut create = json!({ "tool_response": { "type": "create", "content": "a\nb\n", "structuredPatch": [] } });
+        slim(&mut create);
+        assert_eq!((create["lines_added"].clone(), create["lines_removed"].clone()), (json!(2), json!(0)));
+        // Tools that change no file get no counts.
+        let mut read = json!({ "tool_input": { "file_path": "/a" }, "tool_response": { "type": "text", "file": {} } });
+        slim(&mut read);
+        assert!(read.get("lines_added").is_none());
     }
 
     #[test]

@@ -41,7 +41,9 @@ section {
   gap: 16px;
   padding: 12px 16px;
 }
-.row[hidden] { display: none; }
+.row[hidden], #claude-extra[hidden] { display: none; }
+#claude-extra { border-top: 1px solid var(--line); }
+button { font: inherit; padding: 5px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg); }
 .row + .row { border-top: 1px solid var(--line); }
 .text { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .text small { color: var(--dim); font-size: 12px; overflow-wrap: anywhere; }

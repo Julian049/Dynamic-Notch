@@ -49,10 +49,34 @@
         <span class="text"><b>Integración con Claude Code</b><small id="claude-note">Buscando instalaciones…</small></span>
         <input type="checkbox" role="switch" id="claude" disabled>
       </label>
-      <label class="row" id="sound-row">
-        <span class="text"><b>Sonido al terminar</b><small>Cuando Claude termina una respuesta.</small></span>
-        <input type="checkbox" role="switch" id="sound">
-      </label>
+      <div id="claude-extra">
+        <div class="row">
+          <span class="text"><b>Estado</b><small id="claude-status"></small></span>
+        </div>
+        <div class="row">
+          <span class="text"><b>Hooks de Claude Code</b><small id="hooks-status"></small></span>
+          <button type="button" id="reinstall">Reinstalar</button>
+        </div>
+        <label class="row">
+          <span class="text"><b>Mientras trabaja</b><small>Indicador con el tiempo que lleva.</small></span>
+          <input type="checkbox" role="switch" id="claude_working">
+        </label>
+        <label class="row">
+          <span class="text"><b>Cuando termina</b><small>Muestra el final de su respuesta.</small></span>
+          <input type="checkbox" role="switch" id="claude_done">
+        </label>
+        <label class="row">
+          <span class="text"><b>Cuando necesita tu permiso</b><small>Avisa y no se oculta hasta que respondas.</small></span>
+          <input type="checkbox" role="switch" id="claude_permission">
+        </label>
+        <label class="row">
+          <span class="text"><b>Sonido al terminar</b><small>Cuando Claude termina una respuesta.</small></span>
+          <input type="checkbox" role="switch" id="sound">
+        </label>
+        <div class="row">
+          <span class="text"><b>Sesiones activas</b><small id="sessions">Ninguna.</small></span>
+        </div>
+      </div>
     </section>
 
     <p class="error" id="error" role="alert"></p>

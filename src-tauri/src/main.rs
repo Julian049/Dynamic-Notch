@@ -41,13 +41,30 @@ pub struct Config {
     /// Tint the notch with the cover's colors.
     pub art_color: bool,
     pub eq: bool,
+    /// "Cuándo mostrarlo" for Claude Code: while working, when it finishes, when it asks for permission.
+    pub claude_working: bool,
+    pub claude_done: bool,
+    pub claude_permission: bool,
     /// Sent by our Claude Code hooks; persisted because it is written into settings.json.
     pub token: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { claude: false, sound: true, autohide: true, hide_secs: 10, music: true, lyrics: true, art_color: true, eq: true, token: String::new() }
+        Config {
+            claude: false,
+            sound: true,
+            autohide: true,
+            hide_secs: 10,
+            music: true,
+            lyrics: true,
+            art_color: true,
+            eq: true,
+            claude_working: true,
+            claude_done: true,
+            claude_permission: true,
+            token: String::new(),
+        }
     }
 }
 
@@ -231,6 +248,11 @@ fn settings_json(app: &AppHandle, targets: &[PathBuf]) -> Value {
         "lyrics": c.lyrics,
         "art_color": c.art_color,
         "eq": c.eq,
+        "claude_working": c.claude_working,
+        "claude_done": c.claude_done,
+        "claude_permission": c.claude_permission,
+        "claude_hooks": c.claude && claude::hooks_installed(targets, &c.token),
+        "claude_server": app.state::<AppState>().claude_server.lock().unwrap().is_some(),
         "autostart": app.autolaunch().is_enabled().unwrap_or(false),
         "claude_targets": targets.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
     })
@@ -257,6 +279,9 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
         ("lyrics", &mut cfg.lyrics),
         ("art_color", &mut cfg.art_color),
         ("eq", &mut cfg.eq),
+        ("claude_working", &mut cfg.claude_working),
+        ("claude_done", &mut cfg.claude_done),
+        ("claude_permission", &mut cfg.claude_permission),
     ] {
         if let Some(b) = patch[key].as_bool() {
             *field = b;
@@ -282,6 +307,19 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
     save_config(&app, &cfg)?;
     let targets = claude::targets();
     let s = settings_json(&app, &targets);
+    let _ = app.emit("settings", &s);
+    Ok(s)
+}
+
+/// "Reinstalar": writes our hooks again (e.g. after settings.json was edited by hand) and restarts the server if needed.
+#[tauri::command]
+async fn claude_reinstall(app: AppHandle) -> Result<Value, String> {
+    let cfg = app.state::<AppState>().cfg.lock().unwrap().clone();
+    if !cfg.claude {
+        return Err("La integración con Claude Code está desactivada".into());
+    }
+    claude::enable(&app, &cfg.token)?;
+    let s = settings_json(&app, &claude::targets());
     let _ = app.emit("settings", &s);
     Ok(s)
 }
@@ -349,6 +387,7 @@ fn main() {
             lyrics_put,
             media::media_control,
             media::media_art,
+            claude_reinstall,
             drop::drop_stop,
         ])
         .on_window_event(|w, e| match (w.label(), e) {

@@ -2,7 +2,8 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const $ = (id) => document.getElementById(id);
 
-const SWITCHES = ['autostart', 'autohide', 'claude', 'sound', 'music', 'lyrics', 'art_color', 'eq'];
+const SWITCHES = ['autostart', 'autohide', 'claude', 'sound', 'music', 'lyrics', 'art_color', 'eq', 'claude_working', 'claude_done', 'claude_permission'];
+let sessions = [];
 
 function fill(s) {
   for (const key of SWITCHES) ($(key).checked = !!s[key]), ($(key).disabled = false); // save() disabled them
@@ -15,8 +16,47 @@ function fill(s) {
   $('claude-note').textContent = found
     ? `Añade sus hooks a: ${s.claude_targets.join(', ')}`
     : 'No se encontró ninguna carpeta .claude (ni en WSL ni en Windows).';
-  $('sound-row').hidden = !s.claude;
+  $('claude-extra').hidden = !s.claude;
+  $('sound').disabled = !s.claude_done;
+  $('claude-status').textContent = s.claude_server ? 'Conectado' : 'Sin servidor: no se pudo abrir el puerto 27823.';
+  $('hooks-status').textContent = s.claude_hooks ? 'Instalados' : 'Faltan o están desactualizados: pulsa Reinstalar.';
+  $('reinstall').disabled = false;
 }
+
+const fmtTime = (ms) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+const STATE = { working: 'En curso', waiting: 'Atención', done: 'Terminó' };
+
+function renderSessions() {
+  const box = $('sessions');
+  box.replaceChildren();
+  if (!sessions.length) return (box.textContent = 'Ninguna.');
+  for (const s of sessions) {
+    const time = fmtTime(s.state === 'done' ? s.duration : Date.now() - s.started);
+    const line = document.createElement('div');
+    line.textContent = `${s.project} — ${STATE[s.state]} · ${s.detail || s.text} · ${time}`;
+    box.append(line);
+  }
+}
+listen('claude-sessions', ({ payload }) => {
+  sessions = payload;
+  renderSessions();
+});
+setInterval(renderSessions, 1000);
+window.__TAURI__.event.emit('claude-sessions-request');
+
+$('reinstall').addEventListener('click', async () => {
+  $('error').textContent = '';
+  $('reinstall').disabled = true;
+  try {
+    fill(await invoke('claude_reinstall'));
+  } catch (e) {
+    $('error').textContent = String(e);
+    fill(await invoke('get_settings'));
+  }
+});
 
 async function save(patch) {
   $('error').textContent = '';

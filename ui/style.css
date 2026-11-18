@@ -173,6 +173,10 @@ svg[hidden] { display: none; }
 .claude:first-child { padding-top: 0; border-top: 0; }
 .session { display: flex; align-items: center; gap: 8px; white-space: nowrap; min-width: 0; }
 .session .project { font-weight: 600; flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+.session-item { display: grid; gap: 2px; }
+.session .time { flex: none; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+.summary { color: var(--fg); padding-left: 16px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
+.stats, .more { color: var(--fg-dim); font-size: 11px; padding-left: 16px; }
 .session .status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-dim); }
 .session.waiting .status { color: var(--waiting); }
 

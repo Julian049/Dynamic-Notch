@@ -10,11 +10,13 @@ const SIZE_COMPACT = [330, 34];
 const WIDTH_EXPANDED = 460; // .full width in style.css
 const ANIM_MS = 520; // longest .shape transition in style.css
 
-let cfg = { claude: false, music: true, lyrics: true, art_color: true, eq: true };
+let cfg = { claude: false, music: true, lyrics: true, art_color: true, eq: true, claude_working: true, claude_done: true, claude_permission: true };
 let media = null; // { title, artist, playing, duration_ms, position_ms, at }
 let lyrics = { key: '', lines: null };
 let art = { rev: -1, url: null, color: null }; // cover as a blob: URL and its dominant [r, g, b]
-const sessions = new Map(); // session_id → { state: 'working'|'waiting'|'done', project, text, detail }
+// session_id → { state: 'working'|'waiting'|'done', project, text, detail, t (last event),
+//   started (turn start), files (paths edited this turn), added, removed, duration + summary (once done) }
+const sessions = new Map();
 let drop = null; // { url, qr, files, inbox }
 let received = [];
 let dropError = '';
@@ -169,6 +171,23 @@ setInterval(() => {
   else if (expanded) renderProgress();
 }, 200);
 
+// Keep the "Trabajando… 2:14" clocks running.
+setInterval(() => {
+  if (claudeSessions().some((s) => s.state !== 'done')) render();
+}, 1000);
+
+// Ajustes › Conexiones lists the sessions too; it asks when it opens.
+const { emit } = window.__TAURI__.event;
+let sentSessions = '';
+function broadcastSessions(force) {
+  const list = cfg.claude ? allSessions() : [];
+  const json = JSON.stringify(list);
+  if (json === sentSessions && !force) return;
+  sentSessions = json;
+  emit('claude-sessions', list);
+}
+listen('claude-sessions-request', () => broadcastSessions(true));
+
 // ---------- Claude Code ----------
 
 const TOOL_LABELS = {
@@ -190,11 +209,19 @@ function toolText(p) {
   return file ? `${label} ${file}` : label;
 }
 
-function claudeSessions() {
-  if (!cfg.claude) return [];
+function allSessions() {
   const rank = { waiting: 0, working: 1, done: 2 };
   return [...sessions.values()].sort((a, b) => rank[a.state] - rank[b.state] || b.t - a.t);
 }
+
+// The sessions the island shows, after the "Cuándo mostrarlo" switches.
+function claudeSessions() {
+  if (!cfg.claude) return [];
+  const shown = { working: cfg.claude_working, waiting: cfg.claude_permission, done: cfg.claude_done };
+  return allSessions().filter((s) => shown[s.state]);
+}
+
+const elapsedOf = (s) => (s.state === 'done' ? s.duration : Date.now() - s.started);
 
 // "Terminó" stays until the user has seen it: hovered the notch or the notch auto-hid after showing it.
 function forgetSeenSessions() {
@@ -218,12 +245,27 @@ listen('claude', ({ payload: p }) => {
   if (!cfg.claude) return;
   const id = p.session_id || 'default';
   const project = String(p.cwd || '').split(/[\\/]/).filter(Boolean).pop() || 'Claude';
+  const prev = sessions.get(id);
+  // Per-turn data: a new prompt starts the clock and the edit counts again.
+  const turn =
+    p.hook_event_name === 'UserPromptSubmit' || !prev
+      ? { started: Date.now(), files: [], added: 0, removed: 0 }
+      : { started: prev.started, files: prev.files, added: prev.added, removed: prev.removed };
   let s;
   switch (p.hook_event_name) {
     case 'UserPromptSubmit':
-    case 'PostToolUse':
       s = { state: 'working', text: 'Pensando…' };
       break;
+    case 'PostToolUse': {
+      s = { state: 'working', text: 'Pensando…' };
+      const file = p.tool_input?.file_path;
+      if (p.lines_added != null) {
+        turn.added += p.lines_added;
+        turn.removed += p.lines_removed;
+        if (file && !turn.files.includes(file)) turn.files = [...turn.files, file];
+      }
+      break;
+    }
     case 'PreToolUse':
       s = { state: 'working', text: toolText(p) };
       break;
@@ -236,12 +278,17 @@ listen('claude', ({ payload: p }) => {
       break;
     }
     case 'Stop':
-      s = { state: 'done', text: 'Terminó' };
+      s = {
+        state: 'done',
+        text: 'Terminó',
+        duration: Date.now() - turn.started,
+        summary: lastParagraph(p.last_assistant_message),
+      };
       break;
     default:
       return;
   }
-  sessions.set(id, { ...s, project, t: Date.now() });
+  sessions.set(id, { ...turn, ...s, project, t: Date.now() });
   render();
 });
 
@@ -347,25 +394,37 @@ function setMarquee(text) {
   }
 }
 
+const el = (tag, className, text) => Object.assign(document.createElement(tag), { className, textContent: text ?? '' });
+
+// Placeholder layout until the Figma redesign. Up to 3 sessions, then "+N más".
+const MAX_SESSIONS = 3;
 function renderSessions(list) {
   const box = $('claude');
-  box.replaceChildren(
-    ...list.map((s) => {
-      const row = document.createElement('div');
-      row.className = `session ${s.state}`;
-      const dot = document.createElement('span');
-      dot.className = `dot ${s.state}`;
-      const project = document.createElement('span');
-      project.className = 'project';
-      project.textContent = s.project;
-      const status = document.createElement('span');
-      status.className = 'status';
-      status.textContent = s.detail || s.text;
-      row.append(dot, project, status);
-      return row;
-    }),
-  );
+  const rows = list.slice(0, MAX_SESSIONS).map((s) => {
+    const item = el('div', 'session-item');
+    const row = el('div', `session ${s.state}`);
+    row.append(
+      el('span', `dot ${s.state}`),
+      el('span', 'project', s.project),
+      el('span', 'status', s.detail || s.text),
+      el('span', 'time', fmtTime(elapsedOf(s))),
+    );
+    item.append(row);
+    if (s.state === 'done') {
+      if (s.summary) item.append(el('div', 'summary', s.summary));
+      const stats = s.files.length ? `${s.files.length} ${s.files.length === 1 ? 'archivo' : 'archivos'} · +${s.added} −${s.removed}` : '';
+      if (stats) item.append(el('div', 'stats', stats));
+    }
+    return item;
+  });
+  if (list.length > MAX_SESSIONS) rows.push(el('div', 'more', `+${list.length - MAX_SESSIONS} más`));
+  box.replaceChildren(...rows);
   box.hidden = !list.length;
+}
+
+function sessionCount(list) {
+  const waitingCount = list.filter((s) => s.state === 'waiting').length;
+  return `${list.length} sesiones` + (waitingCount ? ` · ${waitingCount} esperando permiso` : '');
 }
 
 function render() {
@@ -380,11 +439,12 @@ function render() {
   let text = '';
   if (dropError) text = dropError;
   else if (dragging) text = 'Suelta para compartir por wifi';
-  else if (waiting) text = `${top.project}: esperando permiso`;
+  else if (waiting) text = list.length > 1 ? sessionCount(list) : `${top.project}: esperando permiso`;
   else if (drop) text = 'Drop activo';
   else if (lyric && playing) text = lyric.cur;
   else if (media) text = [media.title, media.artist].filter(Boolean).join(' — ');
-  else if (top) text = `${top.project} · ${top.text}`;
+  else if (list.length > 1) text = sessionCount(list);
+  else if (top) text = `${top.project} · ${top.text} · ${fmtTime(elapsedOf(top))}`;
   $('eq').hidden = !media || !cfg.eq;
   const cover = media && art.url;
   for (const id of ['art', 'art-mini']) {
@@ -431,6 +491,7 @@ function render() {
   }
 
   layout().then(() => setMarquee(text));
+  broadcastSessions();
 
   // Rust keeps the island visible while something is live and wakes it when that starts.
   const k = playing || list.some((s) => s.state !== 'done') || !!drop;
