@@ -22,7 +22,10 @@ function fill(s) {
     if (el.type === 'checkbox') el.checked = !!s[el.dataset.key];
     else el.value = String(s[el.dataset.key]);
     el.disabled = el.dataset.needs ? !s[el.dataset.needs] : false;
+    el.closest('.row, .card')?.classList.toggle('off', el.disabled); // the hidden style select has neither
   }
+  $('style-name').textContent = $('style').selectedOptions[0]?.text ?? '';
+  for (const b of document.querySelectorAll('[data-style]')) b.classList.toggle('selected', b.dataset.style === s.style);
 
   const found = s.claude_targets.length > 0;
   // Turning it off must stay possible even if the .claude folders disappeared.
@@ -32,7 +35,8 @@ function fill(s) {
     : 'No se encontró ninguna carpeta .claude (ni en WSL ni en Windows).';
   $('claude-extra').hidden = !s.claude;
   $('claude-off').hidden = s.claude;
-  $('hooks-status').textContent = s.claude_hooks ? 'Instalados' : 'Faltan o están desactualizados: pulsa Reinstalar.';
+  $('hooks-badge').hidden = !s.claude_hooks;
+  $('hooks-status').textContent = s.claude_hooks ? `Añadidos a: ${s.claude_targets.join(', ')}` : 'Faltan o están desactualizados: pulsa Reinstalar.';
   renderStatus();
 
   if (s.notif_access !== 'allowed') $('notif-note').textContent = 'Windows no deja leer las notificaciones: revisa Configuración › Privacidad › Notificaciones.';
@@ -110,21 +114,52 @@ action('reinstall', 'claude_reinstall');
 action('claude-test', 'claude_test');
 action('demo', 'demo');
 action('notif-open', 'open_notif_settings');
+$('disconnect').addEventListener('click', () => save({ claude: false }));
 
-// "Buscar un ajuste": hides the rows that don't match, then sections and headings left empty.
+// "Estilo del notch" thumbnails drive the hidden select, so it saves like any other control.
+for (const b of document.querySelectorAll('[data-style]')) {
+  b.addEventListener('click', () => {
+    $('style').value = b.dataset.style;
+    $('style').dispatchEvent(new Event('change'));
+  });
+}
+
+// Expanders open and close from the chevron or a click on the header card outside its controls.
+for (const head of document.querySelectorAll('.expander > .card')) {
+  head.addEventListener('click', (e) => {
+    if (!e.target.closest('.toggle, select')) head.parentElement.classList.toggle('open');
+  });
+}
+
+// In-window navigation; the title bar's back button walks the history.
+const trail = [];
+function show(page, push = true) {
+  if (push && trail.at(-1) !== page) trail.push(page);
+  for (const p of document.querySelectorAll('.page')) p.hidden = p.id !== page;
+  for (const n of document.querySelectorAll('.nav-item')) n.classList.toggle('selected', n.dataset.go === page);
+  $('back').disabled = trail.length < 2;
+  $('content').scrollTop = 0;
+}
+for (const el of document.querySelectorAll('[data-go]')) el.addEventListener('click', () => show(el.dataset.go));
+$('back').addEventListener('click', () => {
+  trail.pop();
+  show(trail.at(-1), false);
+});
+show('general');
+
+// Custom title bar; close goes through CloseRequested, which hides the window.
+const win = window.__TAURI__.window.getCurrentWindow();
+$('win-min').addEventListener('click', () => win.minimize());
+$('win-max').addEventListener('click', () => win.toggleMaximize());
+$('win-close').addEventListener('click', () => win.close());
+
+// "Buscar un ajuste": searches every page at once, hiding the cards that don't match and the groups and pages left empty.
 function filter() {
   const q = $('search').value.trim().toLocaleLowerCase('es');
-  for (const row of document.querySelectorAll('.row')) row.classList.toggle('filtered', !!q && !row.textContent.toLocaleLowerCase('es').includes(q));
-  for (const sec of document.querySelectorAll('section')) sec.classList.toggle('filtered', !!q && !sec.querySelector('.row:not(.filtered)'));
-  // A heading stays while any section up to the next heading of the same or higher level is visible.
-  const heads = [...document.querySelectorAll('main > h2, main > h3')];
-  for (const h of heads) {
-    let visible = false;
-    for (let n = h.nextElementSibling; n && !(n.tagName === 'H2' || (n.tagName === 'H3' && h.tagName === 'H3')); n = n.nextElementSibling) {
-      if (n.tagName === 'SECTION' && !n.classList.contains('filtered') && !n.hidden) visible = true;
-    }
-    h.classList.toggle('filtered', !!q && !visible);
-  }
+  document.body.classList.toggle('searching', !!q);
+  for (const item of document.querySelectorAll('.group > :not(h3)')) item.classList.toggle('filtered', !!q && !item.textContent.toLocaleLowerCase('es').includes(q));
+  for (const g of document.querySelectorAll('.group')) g.classList.toggle('filtered', !!q && !g.querySelector(':scope > :not(h3):not(.filtered):not([hidden])'));
+  for (const p of document.querySelectorAll('.page')) p.classList.toggle('filtered', !!q && !p.querySelector('.group:not(.filtered)'));
 }
 $('search').addEventListener('input', filter);
 

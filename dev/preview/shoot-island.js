@@ -1,5 +1,5 @@
 // Dev only. With the repo root served on :8791 (python3 -m http.server 8791) and a playwright-cli session open
-// with deviceScaleFactor 2: playwright-cli run-code --filename=dev/preview/shoot.js
+// with deviceScaleFactor 2: playwright-cli run-code --filename=dev/preview/shoot-island.js
 // Writes dev/preview/shots/<scenario>.png: the Figma variant, then classic, then Windows 11.
 async (page) => {
   const dir = 'dev/preview/shots'; // relative to where playwright-cli was started (the repo root)

@@ -2,199 +2,295 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Ajustes · Dynamic Island</title>
+  <title>Dynamic Notch</title>
   <link rel="stylesheet" href="settings.css">
   <script src="settings.js" defer></script>
 </head>
 <body>
-  <!-- placeholder layout: crude on purpose until the Figma redesign. Order and options follow the Figma. -->
-  <main>
-    <header>
-      <h1>Dynamic Notch</h1>
-      <small id="status">Activo</small>
+  <header class="titlebar" data-tauri-drag-region>
+    <button type="button" class="back" id="back" aria-label="Atrás" disabled><img src="icons/back.svg" alt=""></button>
+    <span class="app-icon" data-tauri-drag-region></span>
+    <span class="app-title" data-tauri-drag-region>Dynamic Notch</span>
+    <span class="spacer" data-tauri-drag-region></span>
+    <button type="button" class="caption" id="win-min" aria-label="Minimizar"><img src="icons/min.svg" alt=""></button>
+    <button type="button" class="caption" id="win-max" aria-label="Maximizar"><img src="icons/max.svg" alt=""></button>
+    <button type="button" class="caption close" id="win-close" aria-label="Cerrar"><img src="icons/close.svg" alt=""></button>
+  </header>
+
+  <div class="body">
+    <nav class="nav">
+      <div class="app-header">
+        <span class="preview"></span>
+        <span class="meta"><b>Dynamic Notch</b><small><i class="dot"></i><span id="status">Activo</span></small></span>
+      </div>
       <input type="search" id="search" placeholder="Buscar un ajuste" aria-label="Buscar un ajuste">
-    </header>
+      <button type="button" class="nav-item" data-go="general"><img src="icons/sliders.svg" alt="">General</button>
+      <button type="button" class="nav-item" data-go="elementos"><img src="icons/grid.svg" alt="">Elementos</button>
+      <button type="button" class="nav-item" data-go="conexiones"><img src="icons/plug.svg" alt="">Conexiones</button>
+    </nav>
 
-    <h2>General</h2>
-    <h3>Comportamiento</h3>
-    <section>
-      <label class="row">
-        <span class="text"><b>Iniciar con Windows</b><small>Se abre oculta al iniciar sesión.</small></span>
-        <input type="checkbox" role="switch" data-key="autostart">
-      </label>
-      <label class="row">
-        <span class="text"><b>Pantalla</b><small>Dónde aparece el notch.</small></span>
-        <select data-key="monitor" id="monitor"></select>
-      </label>
-      <label class="row">
-        <span class="text"><b>Abrir al pasar el mouse</b><small>Solo funciona cuando hay algo activo. Con «Nunca», se abre con un clic.</small></span>
-        <select data-key="hover">
-          <option value="instant">Al instante</option>
-          <option value="short">Con pausa corta</option>
-          <option value="never">Nunca</option>
-        </select>
-      </label>
-      <label class="row">
-        <span class="text"><b>Ocultar automáticamente</b><small>Se esconde cuando no hay actividad. Apagado: el notch queda siempre visible.</small></span>
-        <input type="checkbox" role="switch" data-key="autohide">
-      </label>
-      <label class="row sub">
-        <span class="text"><b>Ocultar después de</b><small>Tiempo sin actividad ni mouse encima.</small></span>
-        <select data-key="hide_secs" data-number data-needs="autohide">
-          <option value="3">3 segundos</option>
-          <option value="5">5 segundos (recomendado)</option>
-          <option value="10">10 segundos</option>
-          <option value="15">15 segundos</option>
-          <option value="30">30 segundos</option>
-        </select>
-      </label>
-      <label class="row">
-        <span class="text"><b>Duración de los avisos</b><small>Volumen y brillo; batería y Bluetooth duran el doble.</small></span>
-        <select data-key="notice_ms" data-number>
-          <option value="1000">Corta · 1 s</option>
-          <option value="1500">Normal · 1.5 s</option>
-          <option value="3000">Larga · 3 s</option>
-        </select>
-      </label>
-    </section>
-    <h3>Apariencia</h3>
-    <section>
-      <label class="row">
-        <span class="text"><b>Estilo del notch</b><small>Pegado al borde como un notch, o flotando como los menús de Windows 11.</small></span>
-        <select data-key="style">
-          <option value="classic">Notch clásico</option>
-          <option value="win11">Windows 11</option>
-        </select>
-      </label>
-      <label class="row">
-        <span class="text"><b>Tamaño</b><small>Qué tan grande se ve el notch.</small></span>
-        <select data-key="size">
-          <option value="small">Pequeño</option>
-          <option value="normal">Normal</option>
-          <option value="large">Grande</option>
-        </select>
-      </label>
-    </section>
+    <main id="content">
+      <section class="page" id="general">
+        <h2>General</h2>
+        <div class="group">
+          <h3>Comportamiento</h3>
+          <label class="card">
+            <img class="icon" src="icons/power.svg" alt="">
+            <span class="text"><b>Iniciar con Windows</b><small>Se abre oculta al iniciar sesión.</small></span>
+            <span class="toggle"><input type="checkbox" role="switch" data-key="autostart"></span>
+          </label>
+          <label class="card">
+            <img class="icon" src="icons/monitor.svg" alt="">
+            <span class="text"><b>Pantalla</b><small>Dónde aparece el notch.</small></span>
+            <select data-key="monitor" id="monitor"></select>
+          </label>
+          <label class="card">
+            <img class="icon" src="icons/cursor.svg" alt="">
+            <span class="text"><b>Abrir al pasar el mouse</b><small>Solo funciona cuando hay algo activo. Con «Nunca», se abre con un clic.</small></span>
+            <select data-key="hover">
+              <option value="instant">Al instante</option>
+              <option value="short">Con pausa corta</option>
+              <option value="never">Nunca</option>
+            </select>
+          </label>
+          <div class="expander open">
+            <div class="card">
+              <img class="icon" src="icons/eye-off.svg" alt="">
+              <span class="text"><b>Ocultar automáticamente</b><small>Se esconde cuando no hay actividad. Apagado: el notch queda siempre visible.</small></span>
+              <label class="toggle"><input type="checkbox" role="switch" data-key="autohide" aria-label="Ocultar automáticamente"></label>
+              <button type="button" class="expand" aria-label="Mostrar opciones"></button>
+            </div>
+            <div class="rows">
+              <label class="row">
+                <span class="text"><b>Ocultar después de</b><small>Tiempo sin actividad ni mouse encima.</small></span>
+                <select data-key="hide_secs" data-number data-needs="autohide">
+                  <option value="3">3 segundos</option>
+                  <option value="5">5 segundos (recomendado)</option>
+                  <option value="10">10 segundos</option>
+                  <option value="15">15 segundos</option>
+                  <option value="30">30 segundos</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <label class="card">
+            <img class="icon" src="icons/timer.svg" alt="">
+            <span class="text"><b>Duración de los avisos</b><small>Volumen y brillo; batería y Bluetooth duran el doble.</small></span>
+            <select data-key="notice_ms" data-number>
+              <option value="1000">Corta · 1 s</option>
+              <option value="1500">Normal · 1.5 s</option>
+              <option value="3000">Larga · 3 s</option>
+            </select>
+          </label>
+        </div>
+        <div class="group">
+          <h3>Apariencia</h3>
+          <div class="expander open">
+            <div class="card">
+              <img class="icon" src="icons/pen.svg" alt="">
+              <span class="text"><b>Estilo del notch</b><small>Pegado al borde como un notch, o flotando como los menús de Windows 11.</small></span>
+              <span class="value" id="style-name"></span>
+              <button type="button" class="expand" aria-label="Mostrar opciones"></button>
+            </div>
+            <div class="rows styles">
+              <select data-key="style" id="style" hidden>
+                <option value="classic">Notch clásico</option>
+                <option value="win11">Windows 11</option>
+              </select>
+              <button type="button" class="style-option" data-style="classic">
+                <span class="thumb"><img src="icons/style-classic.png" alt=""></span>Notch clásico
+              </button>
+              <button type="button" class="style-option" data-style="win11">
+                <span class="thumb win11"><img src="icons/style-win11.png" alt=""></span>Windows 11
+              </button>
+            </div>
+          </div>
+          <label class="card">
+            <img class="icon" src="icons/resize.svg" alt="">
+            <span class="text"><b>Tamaño</b><small>Qué tan grande se ve el notch.</small></span>
+            <select data-key="size">
+              <option value="small">Pequeño</option>
+              <option value="normal">Normal</option>
+              <option value="large">Grande</option>
+            </select>
+          </label>
+        </div>
+      </section>
 
-    <h2>Elementos</h2>
-    <section>
-      <div class="row">
-        <span class="text"><b>Tú decides qué aparece</b><small>Lo que desactives no entra al notch. Si no hay nada activo, se queda oculto.</small></span>
-        <button type="button" id="demo">Probar el notch</button>
-      </div>
-    </section>
-    <h3>Actividad</h3>
-    <section>
-      <label class="row">
-        <span class="text"><b>Música</b><small>Carátula, letra y controles de lo que está sonando.</small></span>
-        <input type="checkbox" role="switch" data-key="music">
-      </label>
-      <label class="row sub">
-        <span class="text"><b>Letra sincronizada</b><small>Muestra la línea que se está cantando (consulta lrclib.net).</small></span>
-        <input type="checkbox" role="switch" data-key="lyrics" data-needs="music">
-      </label>
-      <label class="row sub">
-        <span class="text"><b>Color de la carátula de fondo</b><small>Tiñe el notch con los colores del álbum.</small></span>
-        <input type="checkbox" role="switch" data-key="art_color" data-needs="music">
-      </label>
-      <label class="row sub">
-        <span class="text"><b>Ecualizador animado</b></span>
-        <input type="checkbox" role="switch" data-key="eq" data-needs="music">
-      </label>
-      <label class="row">
-        <span class="text"><b>Claude Code</b><small id="claude-note">Buscando instalaciones…</small></span>
-        <input type="checkbox" role="switch" data-key="claude" id="claude">
-      </label>
-      <label class="row">
-        <span class="text"><b>Modo focus</b><small>Temporizador de concentración. Se inicia desde la bandeja o desde el notch.</small></span>
-        <input type="checkbox" role="switch" data-key="focus">
-      </label>
-      <label class="row sub">
-        <span class="text"><b>Concentración</b><small>Minutos.</small></span>
-        <input type="number" data-key="focus_work" data-number data-needs="focus" min="1" max="180" step="1" inputmode="numeric">
-      </label>
-      <label class="row sub">
-        <span class="text"><b>Descanso</b><small>Minutos.</small></span>
-        <input type="number" data-key="focus_break" data-number data-needs="focus" min="1" max="180" step="1" inputmode="numeric">
-      </label>
-      <label class="row sub">
-        <span class="text"><b>Descanso largo</b><small>Minutos, cada 4 ciclos.</small></span>
-        <input type="number" data-key="focus_long" data-number data-needs="focus" min="1" max="180" step="1" inputmode="numeric">
-      </label>
-      <label class="row">
-        <span class="text"><b>Compartir archivos</b><small>Arrastra un archivo al notch y pásalo al teléfono con un QR.</small></span>
-        <input type="checkbox" role="switch" data-key="drop">
-      </label>
-    </section>
-    <h3>Sistema</h3>
-    <section>
-      <label class="row">
-        <span class="text"><b>Volumen y brillo</b><small>Aparece solo cuando los cambias.</small></span>
-        <input type="checkbox" role="switch" data-key="sys_volume">
-      </label>
-      <label class="row">
-        <span class="text"><b>Batería</b><small>Cargador conectado y batería baja.</small></span>
-        <input type="checkbox" role="switch" data-key="sys_battery">
-      </label>
-      <label class="row">
-        <span class="text"><b>Dispositivos Bluetooth</b><small>Al conectarse, con su batería aproximada.</small></span>
-        <input type="checkbox" role="switch" data-key="sys_bluetooth">
-      </label>
-      <label class="row">
-        <span class="text"><b>Notificaciones</b><small id="notif-note">Muestra en el notch las notificaciones de Windows.</small></span>
-        <input type="checkbox" role="switch" data-key="notif">
-      </label>
-      <label class="row sub">
-        <span class="text"><b>Dónde se muestran</b><small>«Solo en el notch» apaga el aviso y el sonido de Windows de cada app; vuelven al cambiarlo. Siguen en el centro de notificaciones.</small></span>
-        <select data-key="notif_notch" data-bool data-needs="notif">
-          <option value="false">En el notch y en Windows</option>
-          <option value="true">Solo en el notch</option>
-        </select>
-      </label>
-      <div class="row sub">
-        <span class="text"><small>Para elegir qué apps notifican, usa la configuración de Windows.</small></span>
-        <button type="button" id="notif-open">Abrir configuración</button>
-      </div>
-      <div class="row sub" id="notif-apps-row">
-        <span class="text"><b>Apps en el notch</b><small>Desmarca las que prefieras dejar solo en Windows.</small><span id="notif-apps"></span></span>
-      </div>
-    </section>
+      <section class="page" id="elementos" hidden>
+        <h2>Elementos</h2>
+        <div class="group">
+          <div class="hero">
+            <img src="icons/hero.png" alt="">
+            <div class="hero-text">
+              <b>Tú decides qué aparece</b>
+              <p>Lo que desactives no entra al notch. Si no hay nada activo, se queda oculto.</p>
+              <button type="button" class="accent" id="demo">Probar el notch</button>
+            </div>
+          </div>
+        </div>
+        <div class="group">
+          <h3>Actividad</h3>
+          <div class="expander open">
+            <div class="card">
+              <img class="icon" src="icons/note.svg" alt="">
+              <span class="text"><b>Música</b><small>Carátula, letra y controles de lo que está sonando.</small></span>
+              <label class="toggle"><input type="checkbox" role="switch" data-key="music" aria-label="Música"></label>
+              <button type="button" class="expand" aria-label="Mostrar opciones"></button>
+            </div>
+            <div class="rows">
+              <label class="row">
+                <span class="text"><b>Letra sincronizada</b><small>Muestra la línea que se está cantando (consulta lrclib.net).</small></span>
+                <span class="toggle"><input type="checkbox" role="switch" data-key="lyrics" data-needs="music"></span>
+              </label>
+              <label class="row">
+                <span class="text"><b>Color de la carátula de fondo</b><small>Tiñe el notch con los colores del álbum.</small></span>
+                <span class="toggle"><input type="checkbox" role="switch" data-key="art_color" data-needs="music"></span>
+              </label>
+              <label class="row">
+                <span class="text"><b>Ecualizador animado</b></span>
+                <span class="toggle"><input type="checkbox" role="switch" data-key="eq" data-needs="music"></span>
+              </label>
+            </div>
+          </div>
+          <div class="card">
+            <img class="icon" src="icons/claude.svg" alt="">
+            <span class="text"><b>Claude Code</b><small id="claude-note">Buscando instalaciones…</small></span>
+            <label class="toggle"><input type="checkbox" role="switch" data-key="claude" id="claude" aria-label="Claude Code"></label>
+            <button type="button" class="go" data-go="conexiones" aria-label="Abrir Conexiones"></button>
+          </div>
+          <div class="expander">
+            <div class="card">
+              <img class="icon" src="icons/moon.svg" alt="">
+              <span class="text"><b>Modo focus</b><small>Temporizador de concentración. Se inicia desde la bandeja o desde el notch.</small></span>
+              <label class="toggle"><input type="checkbox" role="switch" data-key="focus" aria-label="Modo focus"></label>
+              <button type="button" class="expand" aria-label="Mostrar opciones"></button>
+            </div>
+            <div class="rows">
+              <label class="row">
+                <span class="text"><b>Concentración</b><small>Minutos.</small></span>
+                <input type="number" data-key="focus_work" data-number data-needs="focus" min="1" max="180" step="1" inputmode="numeric">
+              </label>
+              <label class="row">
+                <span class="text"><b>Descanso</b><small>Minutos.</small></span>
+                <input type="number" data-key="focus_break" data-number data-needs="focus" min="1" max="180" step="1" inputmode="numeric">
+              </label>
+              <label class="row">
+                <span class="text"><b>Descanso largo</b><small>Minutos, cada 4 ciclos.</small></span>
+                <input type="number" data-key="focus_long" data-number data-needs="focus" min="1" max="180" step="1" inputmode="numeric">
+              </label>
+            </div>
+          </div>
+          <label class="card">
+            <img class="icon" src="icons/share.svg" alt="">
+            <span class="text"><b>Compartir archivos</b><small>Arrastra un archivo al notch y pásalo al teléfono con un QR.</small></span>
+            <span class="toggle"><input type="checkbox" role="switch" data-key="drop"></span>
+          </label>
+        </div>
+        <div class="group">
+          <h3>Sistema</h3>
+          <label class="card">
+            <img class="icon" src="icons/speaker.svg" alt="">
+            <span class="text"><b>Volumen y brillo</b><small>Aparece solo cuando los cambias.</small></span>
+            <span class="toggle"><input type="checkbox" role="switch" data-key="sys_volume"></span>
+          </label>
+          <label class="card">
+            <img class="icon" src="icons/battery.svg" alt="">
+            <span class="text"><b>Batería</b><small>Cargador conectado y batería baja.</small></span>
+            <span class="toggle"><input type="checkbox" role="switch" data-key="sys_battery"></span>
+          </label>
+          <label class="card">
+            <img class="icon" src="icons/bluetooth.svg" alt="">
+            <span class="text"><b>Dispositivos Bluetooth</b><small>Al conectarse, con su batería aproximada.</small></span>
+            <span class="toggle"><input type="checkbox" role="switch" data-key="sys_bluetooth"></span>
+          </label>
+          <div class="expander open">
+            <div class="card">
+              <img class="icon" src="icons/bell.svg" alt="">
+              <span class="text"><b>Notificaciones</b><small id="notif-note">Muestra en el notch las notificaciones de Windows.</small></span>
+              <label class="toggle"><input type="checkbox" role="switch" data-key="notif" aria-label="Notificaciones"></label>
+              <button type="button" class="expand" aria-label="Mostrar opciones"></button>
+            </div>
+            <div class="rows">
+              <label class="row">
+                <span class="text"><b>Dónde se muestran</b><small>«Solo en el notch» apaga el aviso y el sonido de Windows de cada app; vuelven al cambiarlo. Siguen en el centro de notificaciones.</small></span>
+                <select data-key="notif_notch" data-bool data-needs="notif">
+                  <option value="false">En el notch y en Windows</option>
+                  <option value="true">Solo en el notch</option>
+                </select>
+              </label>
+              <div class="row info-row">
+                <div class="infobar">
+                  <img src="icons/info.svg" alt="">
+                  <p>Para elegir qué apps notifican, usa la configuración de Windows.</p>
+                  <button type="button" class="link" id="notif-open">Abrir configuración</button>
+                </div>
+              </div>
+              <div class="row" id="notif-apps-row">
+                <span class="text"><b>Apps en el notch</b><small>Desmarca las que prefieras dejar solo en Windows.</small><span id="notif-apps"></span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-    <h2>Conexiones</h2>
-    <section id="claude-extra">
-      <div class="row">
-        <span class="text"><b>Claude Code</b><small id="claude-status"></small></span>
-      </div>
-      <h3 class="in">Cuándo mostrarlo</h3>
-      <label class="row">
-        <span class="text"><b>Mientras trabaja</b><small>Indicador pequeño con el tiempo que lleva.</small></span>
-        <input type="checkbox" role="switch" data-key="claude_working">
-      </label>
-      <label class="row">
-        <span class="text"><b>Cuando termina</b><small>Despliega el notch con el final de su respuesta.</small></span>
-        <input type="checkbox" role="switch" data-key="claude_done">
-      </label>
-      <label class="row sub">
-        <span class="text"><b>Sonido al terminar</b></span>
-        <input type="checkbox" role="switch" data-key="sound" data-needs="claude_done">
-      </label>
-      <label class="row">
-        <span class="text"><b>Cuando necesita tu permiso</b><small>Te avisa si Claude está esperando una respuesta.</small></span>
-        <input type="checkbox" role="switch" data-key="claude_permission">
-      </label>
-      <h3 class="in">Integración</h3>
-      <div class="row">
-        <span class="text"><b>Hooks de Claude Code</b><small id="hooks-status"></small></span>
-        <button type="button" id="reinstall">Reinstalar</button>
-      </div>
-      <div class="row">
-        <span class="text"><b>Probar la conexión</b><small>Envía un aviso de prueba al notch por el mismo camino que Claude Code.</small></span>
-        <button type="button" id="claude-test">Enviar prueba</button>
-      </div>
-    </section>
-    <p id="claude-off" class="muted">Activa Claude Code en Elementos para conectarlo.</p>
+      <section class="page" id="conexiones" hidden>
+        <h2>Conexiones</h2>
+        <div id="claude-extra">
+          <div class="group">
+            <div class="card connection">
+              <span class="logo"><img src="icons/claude.svg" alt=""></span>
+              <span class="text"><b>Claude Code</b><small><i class="dot"></i><span id="claude-status"></span></small></span>
+              <button type="button" id="disconnect">Desconectar</button>
+            </div>
+          </div>
+          <div class="group">
+            <h3>Cuándo mostrarlo</h3>
+            <label class="card">
+              <img class="icon" src="icons/pulse.svg" alt="">
+              <span class="text"><b>Mientras trabaja</b><small>Indicador pequeño con el tiempo que lleva.</small></span>
+              <span class="toggle"><input type="checkbox" role="switch" data-key="claude_working"></span>
+            </label>
+            <div class="expander open">
+              <div class="card">
+                <img class="icon" src="icons/check.svg" alt="">
+                <span class="text"><b>Cuando termina</b><small>Despliega el notch con el final de su respuesta.</small></span>
+                <label class="toggle"><input type="checkbox" role="switch" data-key="claude_done" aria-label="Cuando termina"></label>
+                <button type="button" class="expand" aria-label="Mostrar opciones"></button>
+              </div>
+              <div class="rows">
+                <label class="row">
+                  <span class="text"><b>Sonido al terminar</b></span>
+                  <span class="toggle"><input type="checkbox" role="switch" data-key="sound" data-needs="claude_done"></span>
+                </label>
+              </div>
+            </div>
+            <label class="card">
+              <img class="icon" src="icons/alert.svg" alt="">
+              <span class="text"><b>Cuando necesita tu permiso</b><small>Te avisa si Claude está esperando una respuesta.</small></span>
+              <span class="toggle"><input type="checkbox" role="switch" data-key="claude_permission"></span>
+            </label>
+          </div>
+          <div class="group">
+            <h3>Integración</h3>
+            <div class="card">
+              <img class="icon" src="icons/code.svg" alt="">
+              <span class="text"><b>Hooks de Claude Code</b><small id="hooks-status"></small></span>
+              <span class="badge" id="hooks-badge">Instalados</span>
+              <button type="button" id="reinstall">Reinstalar</button>
+            </div>
+            <div class="card">
+              <img class="icon" src="icons/bolt.svg" alt="">
+              <span class="text"><b>Probar la conexión</b><small>Envía un aviso de prueba al notch por el mismo camino que Claude Code.</small></span>
+              <button type="button" id="claude-test">Enviar prueba</button>
+            </div>
+          </div>
+        </div>
+        <p id="claude-off" class="muted">Activa Claude Code en Elementos para conectarlo.</p>
+      </section>
 
-    <p class="error" id="error" role="alert"></p>
-  </main>
+      <p class="error" id="error" role="alert"></p>
+    </main>
+  </div>
 </body>
 </html>
