@@ -452,7 +452,8 @@ function render() {
     if (cover && $(id).src !== art.url) $(id).src = art.url;
   }
   const tint = media && cfg.art_color && art.color;
-  $('notch').style.setProperty('--tint', tint ? `rgb(${art.color.join(' ')} / 0.35)` : 'transparent');
+  // Opaque (the cover color at 35% over black) so the ears, drawn separately, match the body exactly.
+  $('notch').style.setProperty('--notch-bg', tint ? `rgb(${art.color.map((c) => Math.round(c * 0.35)).join(' ')})` : '#000');
   $('eq').classList.toggle('playing', playing);
   $('dot').className = `dot ${top?.state || ''}`;
   $('notch').classList.toggle('alert', waiting);

@@ -43,18 +43,18 @@ body.hidden .notch { transform: translate(-50%, calc(-100% - 4px)); }
 }
 .notch::before {
   right: 100%;
-  background: radial-gradient(circle at 0 100%, transparent calc(var(--ear) - 0.5px), #000 var(--ear));
+  background: radial-gradient(circle at 0 100%, transparent calc(var(--ear) - 0.5px), var(--notch-bg, #000) var(--ear));
 }
 .notch::after {
   left: 100%;
-  background: radial-gradient(circle at 100% 100%, transparent calc(var(--ear) - 0.5px), #000 var(--ear));
+  background: radial-gradient(circle at 100% 100%, transparent calc(var(--ear) - 0.5px), var(--notch-bg, #000) var(--ear));
 }
 
 .shape {
   position: relative;
   width: var(--w, 190px);
   height: var(--h, 32px);
-  background: linear-gradient(var(--tint, transparent), var(--tint, transparent)), #000;
+  background: var(--notch-bg, #000);
   border-radius: 0 0 12px 12px;
   overflow: hidden;
   transition: width 0.34s var(--ease-out), height 0.34s var(--ease-out), border-radius 0.34s var(--ease-out),
