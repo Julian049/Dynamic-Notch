@@ -87,7 +87,7 @@ body.win11.hidden .notch { transform: translate(-50%, calc(-100% - 40px)); }
 /* Nothing to show and "Ocultar automáticamente" off: Figma "None · Idle". */
 .notch.idle .shape { border-radius: 0 0 12px 12px; }
 .expanded .shape {
-  border-radius: 0 0 26px 26px;
+  border-radius: 0 0 32px 32px;
   transition-timing-function: var(--spring);
   transition-duration: 0.5s;
 }
@@ -162,7 +162,7 @@ body.blink .alert .shape { box-shadow: inset 0 -2px 0 var(--attention); }
 .app-icon img { width: 20px; height: 20px; border-radius: 5.2px; }
 .app-icon .fallback { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5.2px; background: linear-gradient(#5be584, #1faf54); }
 .full {
-  width: 460px;
+  width: var(--xw, 460px); /* per view, set by layout() in main.js */
   box-sizing: border-box;
   padding: 14px 22px 18px;
   display: flex;
@@ -207,18 +207,7 @@ body.blink .alert .shape { box-shadow: inset 0 -2px 0 var(--attention); }
 .eq i { width: 3px; height: 13px; border-radius: 1.5px; background: var(--eq-c); transform: scaleY(0.4); }
 
 
-.media { display: flex; align-items: center; gap: 4px; }
-/* placeholder styles until the Figma redesign */
-.art { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex: none; margin-right: 6px; }
-.art[hidden], .progress[hidden] { display: none; }
-.progress { display: flex; align-items: center; gap: 8px; color: var(--fg-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
-.progress progress { flex: 1; height: 4px; accent-color: var(--fg); }
-.media[hidden] { display: none; }
 .track { flex: 1; min-width: 0; }
-.title, .artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.title { font-size: 14px; font-weight: 600; }
-.artist { color: var(--fg-dim); }
-
 button {
   width: 34px;
   height: 34px;
@@ -239,52 +228,15 @@ button svg { width: 20px; height: 20px; fill: currentColor; }
 /* The hidden attribute does not hide SVG elements by itself. */
 svg[hidden] { display: none; }
 
-.lyrics { display: grid; gap: 2px; }
-.lyrics[hidden] { display: none; }
-.lyrics p {
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--fg-faint);
-  font-size: 12px;
-}
-.lyrics p.cur { color: var(--fg); font-size: 15px; font-weight: 600; }
-
-.claude { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
-.claude[hidden] { display: none; }
-.claude:first-child { padding-top: 0; border-top: 0; }
-.session { display: flex; align-items: center; gap: 8px; white-space: nowrap; min-width: 0; }
-.session .project { font-weight: 600; flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
-.session-item { display: grid; gap: 2px; }
-/* placeholder until the Figma redesign */
-.focus { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
-.focus[hidden], #focus-start[hidden] { display: none; }
-.focus-head { display: flex; justify-content: space-between; color: var(--fg-dim); }
-.focus-head b { color: var(--fg); }
-.focus-time { font-size: 32px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.focus progress { width: 100%; height: 4px; accent-color: var(--fg); }
-.focus-actions { display: flex; gap: 8px; }
-.batteries { display: grid; gap: 4px; padding-top: 10px; border-top: 1px solid var(--line); }
-.batteries[hidden], .notif[hidden], .notif-icon[hidden] { display: none; }
 .notif { display: flex; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .notif-icon { width: 32px; height: 32px; border-radius: 8px; flex: none; }
 .notif-text { min-width: 0; display: grid; gap: 2px; }
 .notif-app { color: var(--fg-dim); font-size: 11px; }
 .notif-text div:last-child { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.battery-row { display: flex; justify-content: space-between; color: var(--fg-dim); }
-.battery-row .pct { font-variant-numeric: tabular-nums; color: var(--fg); }
-.battery-row.low .pct { color: var(--waiting); }
-.session .time { flex: none; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
-.summary { color: var(--fg); padding-left: 16px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
-.stats, .more { color: var(--fg-dim); font-size: 11px; padding-left: 16px; }
-.session .status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-dim); }
-.session.waiting .status { color: var(--waiting); }
-
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.dot.working { background: var(--working); }
-.dot.waiting { background: var(--waiting); }
-.dot.done { background: var(--done); }
+.dot.working { background: var(--accent-claude); }
+.dot.waiting { background: var(--attention); }
+.dot.done { background: var(--positive); }
 body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { opacity: 0.3; }
 
 .drop { display: flex; gap: 16px; align-items: center; }
@@ -310,3 +262,81 @@ body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { 
 .pos { color: var(--positive); }
 .focus-ic { color: var(--accent-focus); }
 .share-ic { color: var(--accent-share); }
+
+/* ---------- Expanded views (Figma "Size=Expanded"): padding and gap per variant ---------- */
+.full [hidden] { display: none; }
+.full.v-music { padding: 16px 20px 18px 18px; gap: 16px; }
+.full.v-claude, .full.v-batteries { padding: 14px 18px 18px; gap: 14px; }
+.full.v-focus { padding: 14px 20px 18px; gap: 16px; }
+.view { display: flex; flex-direction: column; gap: inherit; }
+.vhead { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; white-space: nowrap; }
+.meta > * { overflow: hidden; text-overflow: ellipsis; }
+.view .title { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.225px; color: var(--text-1); }
+.view .sub { font-size: 13px; line-height: 18px; letter-spacing: -0.078px; color: var(--text-2); }
+.avatar { position: relative; flex: none; width: 42px; height: 42px; border-radius: 12px; background: rgb(255 255 255 / 0.08); display: grid; place-items: center; }
+.avatar .badge { left: 30px; top: -4px; height: 16px; min-width: 16px; line-height: 12px; }
+
+/* Mode chips ("Cambiar de modo"): the active mode lit, the others grey. */
+.chip-slot { display: contents; }
+.chips { display: flex; gap: 2px; flex: none; }
+.chip { width: 28px; height: 28px; border-radius: 14px; color: var(--text-3); }
+.chip:hover { background: rgb(255 255 255 / 0.08); }
+.chip.on { background: rgb(255 255 255 / 0.16); color: var(--text-1); }
+.chip img { filter: grayscale(1) brightness(3); opacity: 0.34; } /* the mascot in the grey of the other icons */
+.chip.on img { filter: none; opacity: 1; }
+.ic14 { width: 14px; height: 14px; }
+
+/* Music */
+.glow { position: absolute; left: -70px; top: 30px; width: 300px; height: 260px; border-radius: 50%; background: center / cover no-repeat; opacity: 0.5; filter: blur(40px); pointer-events: none; }
+.top-fade { position: absolute; left: 0; right: 0; top: 0; height: 56px; background: linear-gradient(var(--notch-bg, #000), transparent); pointer-events: none; }
+.media > :not(.glow, .top-fade) { position: relative; }
+.media-main { display: flex; gap: 18px; align-items: flex-start; }
+.art-box { flex: none; width: 116px; height: 116px; box-sizing: border-box; border-radius: 20px; border: 0.5px solid var(--track); overflow: hidden; background: rgb(255 255 255 / 0.08); box-shadow: 0 12px 32px -4px var(--art-shadow, transparent); }
+.art-box img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.media-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.media .vhead { align-items: flex-start; gap: 8px; }
+.lyrics { display: flex; flex-direction: column; gap: 4px; }
+.lyrics p { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; line-height: 18px; letter-spacing: -0.078px; color: var(--text-3); }
+.lyrics p.cur { font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -0.425px; color: var(--text-1); }
+.progress { display: flex; align-items: center; gap: 10px; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.066px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.progress .track { height: 4px; border-radius: 2px; }
+.controls { display: flex; justify-content: center; align-items: center; gap: 40px; }
+.controls button { width: auto; height: auto; border-radius: 8px; }
+.controls button:hover { background: none; opacity: 0.8; }
+.flip { transform: scaleX(-1); }
+
+/* Claude: last message, or one row per session */
+.card { background: rgb(255 255 255 / 0.08); border-radius: 16px; display: flex; flex-direction: column; }
+.card.msg { padding: 12px 14px; gap: 6px; }
+.msg-text { margin: 0; font-size: 13px; line-height: 18px; letter-spacing: -0.078px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.card.rows { padding: 4px 0; }
+.srow, .drow { display: flex; align-items: center; gap: 12px; font-weight: 500; white-space: nowrap; }
+.srow { padding: 10px 12px 10px 14px; }
+.srow + .srow { border-top: 0.5px solid var(--track); }
+.srow .name, .drow .name, .srow .time, .drow .pct { font-size: 13px; line-height: 16px; letter-spacing: -0.078px; }
+.srow .name, .drow .name { color: var(--text-1); }
+.srow .what, .drow .what, .srow.more { font-size: 11px; line-height: 14px; letter-spacing: 0.066px; color: var(--text-3); }
+.srow .time, .drow .pct { flex: none; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.srow.waiting .what, .srow.waiting .time { color: var(--attention); }
+.srow.more { padding-block: 8px; }
+
+/* Focus */
+.timer { display: flex; flex-direction: column; gap: 10px; }
+.time { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+#focus-time { font-size: 44px; line-height: 48px; font-weight: 600; letter-spacing: -1.32px; color: var(--text-1); font-variant-numeric: tabular-nums; }
+.of { font-size: 13px; line-height: 18px; letter-spacing: -0.078px; color: var(--text-3); }
+.focus-track { flex: none; }
+.focus-track > i { background: var(--accent-focus); }
+.actions { display: flex; gap: 8px; }
+.pill { flex: 1; width: auto; height: 30px; padding: 0 14px; border-radius: 999px; background: rgb(255 255 255 / 0.16); color: var(--text-1); font-size: 13px; line-height: 16px; font-weight: 500; letter-spacing: -0.078px; }
+.pill:hover { background: rgb(255 255 255 / 0.22); }
+.pill.primary { background: var(--text-1); color: #000; }
+.pill.primary:hover { background: rgb(255 255 255 / 0.85); }
+
+/* Batteries */
+.batteries .vhead .title { flex: 1; }
+.devices { display: flex; flex-direction: column; gap: 12px; }
+.drow .tile { flex: none; width: 36px; height: 36px; border-radius: 10px; background: rgb(255 255 255 / 0.08); display: grid; place-items: center; color: var(--text-1); }
+.drow .tile .ic { width: 18px; height: 18px; }
+.drow.low .what, .drow.low .pct { color: var(--negative); }

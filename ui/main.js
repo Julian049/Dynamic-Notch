@@ -9,7 +9,8 @@ const SIZE_EMPTY = [190, 30]; // Figma "None · Idle"
 // Compact height per style; the width comes from compactView() (one per Figma compact variant).
 const COMPACT_H = { classic: 34, win11: 40 };
 let compactW = 330;
-const WIDTH_EXPANDED = 460; // .full width in style.css
+const WIDTH_EXPANDED = 460; // expanded width of the views without a Figma width (Drop, notification)
+const VIEW_W = { music: 500, claude: 420, focus: 400, batteries: 380 }; // Figma "Size=Expanded" bodies
 const ANIM_MS = 520; // longest .shape transition in style.css
 
 let cfg = { claude: false, music: true, lyrics: true, art_color: true, eq: true, claude_working: true, claude_done: true, claude_permission: true };
@@ -40,6 +41,8 @@ let expanded = false;
 let keep = false;
 let winSize = [0, 0];
 let shrinkTimer;
+let shownView = null; // expanded view on screen (pickView); kept while collapsing so the fade-out shows it
+let viewMode = null; // mode chosen with a chip until the notch collapses
 
 // ---------- sizing ----------
 
@@ -62,7 +65,10 @@ const WIN11_GAP = 8; // it floats this far below the top edge (.win11 .notch in 
 async function layout() {
   const win11 = cfg.style === 'win11';
   const idle = !expanded && !hasContent();
-  const [w, h] = expanded ? [WIDTH_EXPANDED, $('full').scrollHeight] : idle ? SIZE_EMPTY : [compactW, COMPACT_H[win11 ? 'win11' : 'classic']];
+  const notch = $('notch');
+  // The expanded width is set before measuring the height, which depends on it.
+  if (expanded) notch.style.setProperty('--xw', `${VIEW_W[shownView] || WIDTH_EXPANDED}px`);
+  const [w, h] = expanded ? [VIEW_W[shownView] || WIDTH_EXPANDED, $('full').scrollHeight] : idle ? SIZE_EMPTY : [compactW, COMPACT_H[win11 ? 'win11' : 'classic']];
   const z = ZOOM[cfg.size] || 1;
   let ww = Math.ceil((w + 2 * (EAR + PAD)) * z) + (win11 ? 2 * WIN11_SHADOW : 0);
   let wh = Math.ceil((h + PAD + (win11 ? WIN11_GAP : 0)) * z) + (win11 ? WIN11_SHADOW : 0);
@@ -72,7 +78,6 @@ async function layout() {
   clearTimeout(shrinkTimer);
   const gw = Math.max(ww, winSize[0]), gh = Math.max(wh, winSize[1]);
   if (gw !== winSize[0] || gh !== winSize[1]) await resizeWindow(gw, gh);
-  const notch = $('notch');
   notch.style.setProperty('--w', `${w}px`);
   notch.style.setProperty('--h', `${h}px`);
   notch.classList.toggle('idle', idle);
@@ -83,6 +88,7 @@ async function layout() {
 
 function setExpanded(on) {
   on = on || (!!drop && !sending && !sent) || dragging; // the QR stays open until closed or the phone downloads
+  if (!on) viewMode = null;
   if (on === expanded) return;
   expanded = on;
   render();
@@ -92,11 +98,11 @@ function setExpanded(on) {
 let hoverTimer;
 document.documentElement.addEventListener('mouseenter', () => {
   hovering = true;
-  if (cfg.hover === 'never' || !hasContent()) return;
+  if (cfg.hover === 'never' || !pickView(claudeSessions())) return;
   hoverTimer = setTimeout(() => setExpanded(true), cfg.hover === 'instant' ? 0 : 300);
 });
 $('notch').addEventListener('click', () => {
-  if (!expanded && hasContent()) setExpanded(true);
+  if (!expanded && pickView(claudeSessions())) setExpanded(true);
 });
 document.documentElement.addEventListener('mouseleave', () => {
   clearTimeout(hoverTimer);
@@ -179,7 +185,7 @@ function renderProgress() {
   const p = Math.min(positionNow(), d);
   $('elapsed').textContent = fmtTime(p);
   $('remaining').textContent = `-${fmtTime(d - p)}`;
-  $('bar').value = p / d;
+  $('bar').style.width = `${(p / d) * 100}%`;
 }
 
 function onMedia(payload) {
@@ -438,15 +444,20 @@ $('focus-start').addEventListener('click', () => invoke('focus_start').catch((e)
 $('focus-pause').addEventListener('click', () => invoke('focus_pause'));
 $('focus-stop').addEventListener('click', () => invoke('focus_stop'));
 
+// Figma "Focus · Expanded". Without a session (reached with the chip) it offers to start one.
 function renderFocus() {
-  $('focus').hidden = !focus || dragging;
-  $('focus-start').hidden = !cfg.focus || !!focus || dragging || !!drop;
-  if (!focus) return;
-  $('focus-phase').textContent = FOCUS_LABELS[focus.phase] + (focus.away ? ' · en pausa: no hay actividad' : focus.paused ? ' · en pausa' : '');
-  $('focus-cycle').textContent = ` ${focus.cycle} de ${focus.cycles}`;
-  $('focus-time').textContent = fmtTime(focus.remaining_ms);
-  $('focus-bar').value = focus.total_ms ? 1 - focus.remaining_ms / focus.total_ms : 0;
-  $('focus-pause').textContent = focus.paused ? 'Reanudar' : 'Pausar';
+  const f = focus;
+  $('focus-phase').textContent = !f || f.phase === 'work' ? 'Modo focus' : FOCUS_LABELS[f.phase];
+  $('focus-sub').textContent = !f
+    ? 'Notificaciones en silencio mientras dura'
+    : f.away ? 'En pausa: no hay actividad' : f.paused ? 'En pausa' : f.phase === 'work' ? 'Notificaciones en silencio' : `Ciclo ${f.cycle} de ${f.cycles}`;
+  const total = f ? f.total_ms : (cfg.focus_work || 25) * 60000;
+  $('focus-time').textContent = fmtTime(f ? f.remaining_ms : total);
+  $('focus-of').textContent = `de ${Math.round(total / 60000)} min`;
+  $('focus-bar').style.width = `${(f && total ? 1 - f.remaining_ms / total : 0) * 100}%`;
+  $('focus-pause').hidden = $('focus-stop').hidden = !f;
+  $('focus-start').hidden = !!f;
+  if (f) $('focus-pause').textContent = f.paused ? 'Reanudar' : 'Pausar';
 }
 
 // ---------- Sistema (system.rs) ----------
@@ -507,22 +518,33 @@ function noticeText(n) {
 }
 const fmtDuration = (min) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${min} min`);
 
-// Placeholder list until the Figma redesign: shown on hover while a battery notice is up.
+// Figma "Batteries · Expanded": hover over a battery or Bluetooth notice.
 function renderBatteries() {
-  const show = !!notice && BATTERY_KINDS.includes(notice.kind) && !dragging;
-  $('batteries').hidden = !show;
-  if (!show) return;
   const rows = [];
-  if (batteries.pc) rows.push(['Este equipo', batteries.pc.percent, batteries.pc.charging ? 'Cargando' : '']);
-  for (const d of batteries.devices) rows.push([d.name, d.battery, '']);
-  $('batteries').replaceChildren(
-    el('b', '', 'Baterías'),
-    ...rows.map(([name, pct, note]) => {
-      const row = el('div', `battery-row${pct <= 20 ? ' low' : ''}`);
-      row.append(el('span', 'name', name + (note ? ` · ${note}` : '')), el('span', 'pct', `${pct} %`));
+  const pc = batteries.pc;
+  if (pc) {
+    const mins = notice?.kind === 'charging' && notice.minutes_to_full;
+    const sub = pc.charging ? 'Cargando' + (mins ? ` · lleno en ${fmtDuration(mins)}` : '') : 'En batería';
+    rows.push({ glyph: icon('laptop'), name: 'Este equipo', pct: pc.percent, text: `${pc.percent} %`, sub, charging: pc.charging });
+  }
+  for (const d of batteries.devices) rows.push({ glyph: deviceIcon(d.name, ''), name: d.name, pct: d.battery, text: `~${d.battery} %`, sub: 'Conectado' });
+  const head = el('div', 'vhead');
+  head.append(el('div', 'title', 'Baterías'));
+  if (batteries.devices.length) head.append(span('cap', 'Valores aproximados'));
+  const list = el('div', 'devices');
+  list.append(
+    ...rows.map((r) => {
+      const low = r.pct <= 20 && !r.charging;
+      const row = el('div', `drow${low ? ' low' : ''}`);
+      const tile = el('span', 'tile');
+      tile.append(r.glyph);
+      const meta = el('div', 'meta');
+      meta.append(el('div', 'name', r.name), el('div', 'what', low ? 'Batería baja' : r.sub));
+      row.append(tile, meta, span('pct', r.text), battery(r.pct, r.charging ? 'charging' : low ? 'low' : ''));
       return row;
     }),
   );
+  $('batteries').replaceChildren(head, list);
 }
 
 // ---------- visibility (driven by Rust, see watch_visibility in main.rs) ----------
@@ -565,30 +587,115 @@ function setMarquee(main, sub) {
 
 const el = (tag, className, text) => Object.assign(document.createElement(tag), { className, textContent: text ?? '' });
 
-// Placeholder layout until the Figma redesign. Up to 3 sessions, then "+N más".
+const fmtLong = (ms) => {
+  const t = Math.max(0, Math.round(ms / 1000));
+  return t >= 60 ? `${Math.floor(t / 60)} min ${t % 60} s` : `${t} s`;
+};
+
+// Figma "Claude Done · Expanded" (the last message, no buttons) while a finished turn is unseen and nobody
+// waits for permission; otherwise "Claude Sessions · Expanded": up to 3 rows, then "+N más".
 const MAX_SESSIONS = 3;
-function renderSessions(list) {
-  const box = $('claude');
+function renderClaude(list) {
+  const done = list[0]?.state !== 'waiting' && list.find((s) => s.state === 'done');
+  const body = $('claude-body');
+  $('claude-avatar').querySelector('.badge')?.remove();
+  if (done) {
+    $('claude-title').textContent = 'Claude terminó';
+    $('claude-sub').textContent = `${done.project} · ${fmtLong(done.duration)}`;
+    body.className = 'card msg';
+    body.hidden = !done.summary;
+    body.replaceChildren(span('cap', 'Último mensaje'), el('p', 'msg-text', done.summary || ''));
+    return;
+  }
+  const count = (state, word) => {
+    const n = list.filter((s) => s.state === state).length;
+    return n ? `${n} ${word}` : '';
+  };
+  $('claude-title').textContent = 'Claude Code';
+  $('claude-sub').textContent = [count('working', 'trabajando'), count('waiting', 'esperando')].filter(Boolean).join(' · ');
+  if (list.length > 1) $('claude-avatar').append(span('badge', String(list.length)));
   const rows = list.slice(0, MAX_SESSIONS).map((s) => {
-    const item = el('div', 'session-item');
-    const row = el('div', `session ${s.state}`);
-    row.append(
-      el('span', `dot ${s.state}`),
-      el('span', 'project', s.project),
-      el('span', 'status', s.detail || s.text),
-      el('span', 'time', fmtTime(elapsedOf(s))),
-    );
-    item.append(row);
-    if (s.state === 'done') {
-      if (s.summary) item.append(el('div', 'summary', s.summary));
-      const stats = s.files.length ? `${s.files.length} ${s.files.length === 1 ? 'archivo' : 'archivos'} · +${s.added} −${s.removed}` : '';
-      if (stats) item.append(el('div', 'stats', stats));
-    }
-    return item;
+    const row = el('div', `srow ${s.state}`);
+    const meta = el('div', 'meta');
+    meta.append(el('div', 'name', s.project), el('div', 'what', (s.state === 'waiting' && s.detail) || s.text));
+    row.append(el('span', `dot ${s.state}`), meta, span('time', fmtTime(elapsedOf(s))));
+    return row;
   });
-  if (list.length > MAX_SESSIONS) rows.push(el('div', 'more', `+${list.length - MAX_SESSIONS} más`));
-  box.replaceChildren(...rows);
-  box.hidden = !list.length;
+  if (list.length > MAX_SESSIONS) rows.push(el('div', 'srow more', `+${list.length - MAX_SESSIONS} más`));
+  body.className = 'card rows';
+  body.hidden = !rows.length;
+  body.replaceChildren(...rows);
+}
+
+// ---------- expanded view ----------
+
+const VIEW_EL = { music: 'media', claude: 'claude', focus: 'focus', batteries: 'batteries', notif: 'notif', drop: 'drop' };
+const MODES = ['music', 'claude', 'focus'];
+// The modes a chip can switch to. Focus is always there when enabled: its view starts a session.
+const modes = (list) => MODES.filter((m) => (m === 'music' ? !!media : m === 'claude' ? list.length > 0 : !!focus || !!cfg.focus));
+
+// What the expanded notch shows, most urgent first (like compactView); null: nothing to expand to.
+function pickView(list) {
+  if (dragging) return 'drag';
+  if (drop) return 'drop';
+  if (modes(list).includes(viewMode)) return viewMode;
+  if (list[0]?.state === 'waiting') return 'claude';
+  if (notice?.kind === 'notification') return 'notif';
+  if (BATTERY_KINDS.includes(notice?.kind)) return 'batteries';
+  if (list.some((s) => s.state === 'done') && !focus) return 'claude';
+  if (focus) return 'focus';
+  if (media) return 'music';
+  if (list.length) return 'claude';
+  return null;
+}
+
+// "Cambiar de modo": one chip per mode in the view's top-right corner, when there are two or more.
+// Kept across renders (rebuilt only when the set changes) so a click never lands on a replaced button.
+const CHIP_ICON = { music: () => icon('note', 'ic14'), claude: () => img('claude', 14.08, 10.24), focus: () => icon('moon', 'ic14') };
+const CHIP_LABEL = { music: 'Música', claude: 'Claude Code', focus: 'Modo focus' };
+const chipsBox = el('div', 'chips');
+chipsBox.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b) (viewMode = b.dataset.mode), render();
+});
+function renderChips(view, list) {
+  const avail = modes(list);
+  const show = avail.length > 1 && avail.includes(view);
+  const key = show ? `${avail}/${view}` : '';
+  if (chipsBox.dataset.key !== key) {
+    chipsBox.dataset.key = key;
+    chipsBox.replaceChildren(
+      ...(show ? avail : []).map((m) => {
+        const b = el('button', `chip${m === view ? ' on' : ''}`);
+        b.dataset.mode = m;
+        b.setAttribute('aria-label', CHIP_LABEL[m]);
+        b.append(CHIP_ICON[m]());
+        return b;
+      }),
+    );
+  }
+  chipsBox.hidden = !show;
+  const slot = show && $(VIEW_EL[view]).querySelector('.chip-slot');
+  if (slot && chipsBox.parentNode !== slot) slot.append(chipsBox);
+}
+
+function renderMusic(lyric) {
+  $('title').textContent = media?.title || '';
+  $('artist').textContent = media?.artist || '';
+  const toggle = `icons/notch-${media?.playing ? 'pause' : 'play'}.svg`;
+  if ($('toggle-icon').getAttribute('src') !== toggle) $('toggle-icon').src = toggle;
+  $('art').hidden = !art.url;
+  if (art.url && $('art').src !== art.url) $('art').src = art.url;
+  // The ambient glow is the cover itself, blurred (Figma "Ambient glow"); the cover's shadow takes its colour.
+  $('glow').style.backgroundImage = art.url ? `url(${art.url})` : '';
+  $('media').style.setProperty('--art-shadow', art.color ? `rgb(${art.color.join(' ')} / 0.45)` : 'transparent');
+  renderProgress();
+  $('lyrics').hidden = !lyric;
+  if (lyric) {
+    $('ly-prev').textContent = lyric.prev;
+    $('ly-cur').textContent = lyric.cur;
+    $('ly-next').textContent = lyric.next;
+  }
 }
 
 // ---------- compact line (Figma "Size=Compact" variants) ----------
@@ -767,9 +874,6 @@ function render() {
   $('line-main').className = v.mainCls;
   $('line-sub').className = v.subCls;
   $('eq').hidden = !v.eq;
-  const cover = media && art.url;
-  $('art').hidden = !cover;
-  if (cover && $('art').src !== art.url) $('art').src = art.url;
   const tint = media && cfg.art_color && art.color;
   // Opaque (the cover color at 35% over black) so the ears, drawn separately, match the body exactly.
   const base = cfg.style === 'win11' ? 44 : 0; // Windows 11 style: the acrylic grey of its flyouts (Figma V2), not black
@@ -780,28 +884,17 @@ function render() {
   const lowNotice = notice && (notice.kind === 'battery_low' || notice.kind === 'bt_low');
   $('notch').classList.toggle('alert', waiting || focusAlert || lowNotice);
 
-  // Expanded.
-  $('drag-hint').hidden = !dragging;
-  $('media').hidden = dragging || (!media && (list.length > 0 || !!drop));
-  $('title').textContent = media?.title || 'Nada sonando';
-  $('artist').textContent = media?.artist || '';
-  // SVG elements have no .hidden property; toggle the attribute.
-  $('icon-play').toggleAttribute('hidden', playing);
-  $('icon-pause').toggleAttribute('hidden', !playing);
-  renderProgress();
-  if (dragging) $('progress').hidden = true;
-  $('lyrics').hidden = !(lyric && media);
-  if (lyric) {
-    $('ly-prev').textContent = lyric.prev;
-    $('ly-cur').textContent = lyric.cur;
-    $('ly-next').textContent = lyric.next;
-  }
-  renderSessions(dragging ? [] : list);
-  renderFocus();
-  renderBatteries();
-  const notif = notice?.kind === 'notification' && !dragging;
-  $('notif').hidden = !notif;
-  if (notif) {
+  // Expanded: one view at a time.
+  if (expanded) shownView = pickView(list);
+  $('full').className = `full${shownView ? ` v-${shownView}` : ''}`;
+  for (const [name, id] of Object.entries(VIEW_EL)) $(id).hidden = shownView !== name;
+  $('drag-hint').hidden = shownView !== 'drag';
+  if (shownView === 'music') renderMusic(lyric);
+  else if (shownView === 'claude') renderClaude(list);
+  else if (shownView === 'focus') renderFocus();
+  else if (shownView === 'batteries') renderBatteries();
+  renderChips(shownView, list);
+  if (shownView === 'notif' && notice?.kind === 'notification') {
     $('notif-app').textContent = notice.app + (notice.more ? ` · +${notice.more} más` : '');
     $('notif-title').textContent = notice.title;
     $('notif-body').textContent = notice.body;
@@ -809,8 +902,6 @@ function render() {
     $('notif-icon').hidden = !url;
     if (url && $('notif-icon').src !== url) $('notif-icon').src = url;
   }
-  if (dragging) $('lyrics').hidden = true;
-  $('drop').hidden = !drop || dragging;
   if (drop) {
     if ($('qr').dataset.url !== drop.url) {
       $('qr').innerHTML = drop.qr; // SVG generated by our own Rust code (drop.rs)
