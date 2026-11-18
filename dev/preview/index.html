@@ -1,0 +1,38 @@
+<!doctype html>
+<!-- Dev only: every compact state as the Figma draws it (shots/figma/*.png, when downloaded) next to the
+     real island in both styles. Each iframe is the island's transparent window, at the top of a fake screen.
+     ?only=music,volume limits the list; ?outline=1 draws the window bounds. -->
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Isla compacta · preview</title>
+  <style>
+    body { margin: 0; padding: 12px; background: #111; color: #ccc; font: 12px system-ui, sans-serif; display: grid; gap: 16px; }
+    .case { display: grid; gap: 4px; width: 600px; }
+    .screen { position: relative; height: 100px; overflow: hidden; background: linear-gradient(160deg, #23324a, #3b2a4a 60%, #1d2a33); }
+    .screen.figma { background: #1e1e1e; }
+    .screen > * { position: absolute; top: 0; left: 50%; transform: translateX(-50%); }
+    iframe { border: 0; width: 0; height: 0; background: transparent; }
+    .outline iframe { outline: 1px dashed rgb(255 255 255 / 0.3); }
+  </style>
+</head>
+<body>
+<script>
+const ALL = ['idle', 'volume', 'mute', 'brightness', 'music', 'music-claude', 'claude-working', 'claude-sessions', 'focus',
+  'share-sending', 'share-done', 'battery-charging', 'battery-low', 'bluetooth', 'device-low', 'notification', 'music-notif'];
+const q = new URLSearchParams(location.search);
+const list = q.get('only') ? q.get('only').split(',') : ALL;
+if (q.get('outline')) document.body.classList.add('outline');
+for (const name of list) {
+  const box = document.createElement('section');
+  box.className = 'case';
+  box.id = name;
+  box.innerHTML = `<b>${name}</b>
+    <div class="screen figma"><img src="shots/figma/${name}.png" alt=""></div>
+    <div class="screen" id="${name}-classic"><iframe src="island.html?style=classic&scenario=${name}"></iframe></div>
+    <div class="screen" id="${name}-win11"><iframe src="island.html?style=win11&scenario=${name}"></iframe></div>`;
+  document.body.append(box);
+}
+</script>
+</body>
+</html>

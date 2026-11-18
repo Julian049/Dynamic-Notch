@@ -161,12 +161,15 @@ pub fn start(app: &AppHandle, paths: Vec<PathBuf>) -> Result<(), String> {
         .build();
     let inbox = app.path().download_dir().map_err(|e| e.to_string())?.join("Drop");
     let names: Vec<String> = files.iter().map(|p| file_name(p)).collect();
+    let bytes: u64 = files.iter().filter_map(|p| p.metadata().ok()).map(|m| m.len()).sum();
     *app.state::<AppState>().drop.lock().unwrap() =
         Some(Active { token: token.clone(), files: Arc::new(files), inbox: inbox.clone() });
     let _ = app.emit_to("island", "drop", json!({
         "url": url,
         "qr": qr,
         "files": names,
+        "bytes": bytes,
+        "expires_ms": crate::media::now_ms() + LIFETIME.as_millis() as i64,
         "inbox": inbox.display().to_string(),
     }));
 

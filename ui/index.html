@@ -12,76 +12,111 @@
 <body>
   <div class="notch" id="notch">
     <div class="shape">
-      <div class="compact">
-        <img class="art-mini" id="art-mini" alt="" hidden>
+      <!-- One line, rebuilt by compactView() in main.js: lead (icon/cover) · text · equalizer · trail. -->
+      <div class="compact" id="compact">
+        <span class="slot" id="lead"></span>
+        <div class="marquee" id="marquee"><span id="line"><span id="line-main"></span><span id="line-sub"></span></span></div>
         <span class="eq" id="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-        <div class="marquee" id="marquee"><span id="line"></span></div>
-        <span class="dot" id="dot" aria-hidden="true"></span>
+        <span class="slot" id="trail"></span>
       </div>
 
       <div class="full" id="full">
-        <!-- placeholder: crude on purpose until the Figma redesign -->
-        <div id="drag-hint" hidden style="font-size:20px;padding:16px 0;text-align:center">SUÉLTALO AQUÍ</div>
-        <div class="media" id="media">
-          <img class="art" id="art" alt="" hidden>
-          <div class="track">
-            <div class="title" id="title">Nada sonando</div>
-            <div class="artist" id="artist"></div>
+        <!-- Figma "Share · Drag Over": dashed drop zone -->
+        <div class="dragzone" id="drag-hint" hidden>
+          <span class="ic" style="--i:url(icons/notch-share.svg)"></span>
+          <div class="title">Suelta para compartir</div>
+          <div class="sub">Se genera un QR para tu teléfono</div>
+        </div>
+        <!-- Expanded views (Figma "Size=Expanded"): render() shows one, picked by pickView() in main.js.
+             The mode chips (#chips) move into the .chip-slot of the view on screen. -->
+        <div class="media view" id="media" hidden>
+          <div class="glow" id="glow"></div>
+          <div class="top-fade"></div>
+          <div class="media-main">
+            <div class="art-box"><img id="art" alt="" hidden></div>
+            <div class="media-right">
+              <div class="vhead">
+                <div class="meta"><div class="title" id="title"></div><div class="sub" id="artist"></div></div>
+                <span class="chip-slot"></span>
+              </div>
+              <div class="lyrics" id="lyrics" hidden>
+                <p id="ly-prev"></p>
+                <p id="ly-cur" class="cur"></p>
+                <p id="ly-next"></p>
+              </div>
+            </div>
           </div>
-          <button id="prev" aria-label="Anterior">
-            <svg viewBox="0 0 24 24"><path d="M18 6l-8.5 6L18 18zM6 6h2v12H6z"/></svg>
-          </button>
-          <button id="toggle" aria-label="Reproducir o pausar">
-            <svg viewBox="0 0 24 24" id="icon-play"><path d="M8 5v14l11-7z"/></svg>
-            <svg viewBox="0 0 24 24" id="icon-pause" hidden><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
-          </button>
-          <button id="next" aria-label="Siguiente">
-            <svg viewBox="0 0 24 24"><path d="M6 6l8.5 6L6 18zM16 6h2v12h-2z"/></svg>
-          </button>
-        </div>
-        <div class="progress" id="progress" hidden>
-          <span id="elapsed"></span><progress id="bar" max="1" value="0"></progress><span id="remaining"></span>
-        </div>
-
-        <div class="lyrics" id="lyrics" hidden>
-          <p id="ly-prev"></p>
-          <p id="ly-cur" class="cur"></p>
-          <p id="ly-next"></p>
-        </div>
-
-        <div class="claude" id="claude" hidden></div>
-
-        <div class="focus" id="focus" hidden>
-          <div class="focus-head"><b id="focus-phase"></b><span id="focus-cycle"></span></div>
-          <div class="focus-time" id="focus-time"></div>
-          <progress id="focus-bar" max="1" value="0"></progress>
-          <div class="focus-actions">
-            <button class="text-btn" id="focus-pause">Pausar</button>
-            <button class="text-btn" id="focus-stop">Terminar</button>
+          <div class="progress" id="progress" hidden>
+            <span id="elapsed"></span><span class="track"><i id="bar"></i></span><span id="remaining"></span>
           </div>
-        </div>
-        <button class="text-btn" id="focus-start" hidden>Iniciar focus</button>
-
-        <div class="batteries" id="batteries" hidden></div>
-
-        <div class="notif" id="notif" hidden>
-          <img class="notif-icon" id="notif-icon" alt="">
-          <div class="notif-text">
-            <div class="notif-app" id="notif-app"></div>
-            <b id="notif-title"></b>
-            <div id="notif-body"></div>
+          <div class="controls">
+            <button id="prev" aria-label="Anterior"><img src="icons/notch-next.svg" width="24" height="24" alt="" class="flip"></button>
+            <button id="toggle" aria-label="Reproducir o pausar"><img id="toggle-icon" src="icons/notch-play.svg" width="32" height="32" alt=""></button>
+            <button id="next" aria-label="Siguiente"><img src="icons/notch-next.svg" width="24" height="24" alt=""></button>
           </div>
         </div>
 
-        <div class="drop" id="drop" hidden>
+        <div class="claude view" id="claude" hidden>
+          <div class="vhead">
+            <span class="avatar" id="claude-avatar"><img src="icons/notch-claude.svg" width="24.2" height="17.6" alt=""></span>
+            <div class="meta"><div class="title" id="claude-title"></div><div class="sub" id="claude-sub"></div></div>
+            <span class="chip-slot"></span>
+          </div>
+          <div class="card" id="claude-body"></div>
+        </div>
+
+        <div class="focus view" id="focus" hidden>
+          <div class="vhead">
+            <span class="avatar"><img src="icons/notch-moon.svg" width="20" height="20" alt=""></span>
+            <div class="meta"><div class="title" id="focus-phase"></div><div class="sub" id="focus-sub"></div></div>
+            <span class="chip-slot"></span>
+          </div>
+          <div class="timer">
+            <div class="time"><span id="focus-time"></span><span class="of" id="focus-of"></span></div>
+            <span class="track focus-track"><i id="focus-bar"></i></span>
+          </div>
+          <div class="actions">
+            <button class="pill primary" id="focus-pause">Pausar</button>
+            <button class="pill" id="focus-stop">Terminar</button>
+            <button class="pill primary" id="focus-start">Iniciar</button>
+          </div>
+        </div>
+
+        <div class="batteries view" id="batteries" hidden></div>
+
+        <!-- Figma "Notification · Expanded" / "Notification Stack": one notification, or several at once -->
+        <div class="notif view" id="notif" hidden>
+          <span class="napp" id="notif-icon"></span>
+          <div class="meta">
+            <div class="nhead"><b class="title" id="notif-title"></b><span class="sub" id="notif-app"></span><span class="count" id="notif-count" hidden></span><span class="when">ahora</span></div>
+            <p class="nbody" id="notif-body"></p>
+          </div>
+        </div>
+
+        <!-- Figma "Notifications · Pending": what arrived while the notch was closed -->
+        <div class="pending view" id="pending" hidden>
+          <div class="vhead">
+            <div class="meta"><div class="title">Notificaciones</div><div class="sub" id="pending-sub"></div></div>
+            <span class="chip-slot"></span>
+          </div>
+          <div class="card rows" id="pending-rows"></div>
+          <div class="more" id="pending-more" hidden></div>
+        </div>
+
+        <!-- Figma "Share · Ready": the file, the QR and how long it stays available -->
+        <div class="drop view" id="drop" hidden>
+          <div class="vhead">
+            <span class="ftype" id="drop-type"></span>
+            <div class="meta"><div class="title" id="drop-name"></div><div class="sub" id="drop-size"></div></div>
+            <button class="xbtn" id="drop-close" aria-label="Cerrar"><span class="ic" style="--i:url(icons/notch-close.svg)"></span></button>
+          </div>
           <div class="qr" id="qr"></div>
-          <div class="drop-info">
-            <div class="drop-title">Escanea con el celular</div>
-            <div class="drop-files" id="drop-url" style="user-select:text"></div>
-            <div class="drop-files" id="drop-files"></div>
-            <div class="drop-note" id="drop-note"></div>
-            <div class="drop-note">¿No abre en Android? Dale al navegador el permiso de red local (Ajustes › Apps › navegador › Permisos).</div>
-            <button class="text-btn" id="drop-close">Cerrar</button>
+          <div class="drop-text">
+            <div class="title">Escanea con tu teléfono</div>
+            <div class="sub" id="drop-note"></div>
+            <div class="sub small" id="drop-url" style="user-select:text"></div>
+            <div class="sub small">¿No abre en Android? Dale al navegador el permiso de red local.</div>
+            <div class="avail"><i></i><span id="drop-left"></span></div>
           </div>
         </div>
       </div>
