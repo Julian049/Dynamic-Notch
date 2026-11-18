@@ -2,6 +2,7 @@
 
 mod claude;
 mod drop;
+mod focus;
 mod media;
 
 use serde::{Deserialize, Serialize};
@@ -45,6 +46,11 @@ pub struct Config {
     pub claude_working: bool,
     pub claude_done: bool,
     pub claude_permission: bool,
+    pub focus: bool,
+    /// Minutes.
+    pub focus_work: u64,
+    pub focus_break: u64,
+    pub focus_long: u64,
     /// Sent by our Claude Code hooks; persisted because it is written into settings.json.
     pub token: String,
 }
@@ -63,6 +69,10 @@ impl Default for Config {
             claude_working: true,
             claude_done: true,
             claude_permission: true,
+            focus: false,
+            focus_work: 25,
+            focus_break: 5,
+            focus_long: 15,
             token: String::new(),
         }
     }
@@ -251,6 +261,10 @@ fn settings_json(app: &AppHandle, targets: &[PathBuf]) -> Value {
         "claude_working": c.claude_working,
         "claude_done": c.claude_done,
         "claude_permission": c.claude_permission,
+        "focus": c.focus,
+        "focus_work": c.focus_work,
+        "focus_break": c.focus_break,
+        "focus_long": c.focus_long,
         "claude_hooks": c.claude && claude::hooks_installed(targets, &c.token),
         "claude_server": app.state::<AppState>().claude_server.lock().unwrap().is_some(),
         "autostart": app.autolaunch().is_enabled().unwrap_or(false),
@@ -282,6 +296,7 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
         ("claude_working", &mut cfg.claude_working),
         ("claude_done", &mut cfg.claude_done),
         ("claude_permission", &mut cfg.claude_permission),
+        ("focus", &mut cfg.focus),
     ] {
         if let Some(b) = patch[key].as_bool() {
             *field = b;
@@ -289,6 +304,11 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
     }
     if let Some(n) = patch["hide_secs"].as_u64() {
         cfg.hide_secs = n.clamp(2, 3600);
+    }
+    for (key, field) in [("focus_work", &mut cfg.focus_work), ("focus_break", &mut cfg.focus_break), ("focus_long", &mut cfg.focus_long)] {
+        if let Some(n) = patch[key].as_u64() {
+            *field = n.clamp(1, 180);
+        }
     }
     if let Some(on) = patch["claude"].as_bool().filter(|on| *on != cfg.claude) {
         if on {
@@ -303,8 +323,12 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
         }
         cfg.claude = on;
     }
+    let focus_on = cfg.focus;
     *state.cfg.lock().unwrap() = cfg.clone();
     save_config(&app, &cfg)?;
+    if !focus_on {
+        focus::stop(&app);
+    }
     let targets = claude::targets();
     let s = settings_json(&app, &targets);
     let _ = app.emit("settings", &s);
@@ -353,14 +377,17 @@ fn open_settings(app: &AppHandle) {
 
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let settings = MenuItem::with_id(app, "settings", "Ajustes", true, None::<&str>)?;
+    let focus_item = MenuItem::with_id(app, "focus", "Iniciar focus", true, None::<&str>)?;
+    focus::set_tray_item(app.handle(), focus_item.clone());
     let quit = MenuItem::with_id(app, "quit", "Salir", true, None::<&str>)?;
     TrayIconBuilder::new()
         .icon(app.default_window_icon().expect("icon").clone())
         .tooltip("Dynamic Island")
-        .menu(&Menu::with_items(app, &[&settings, &quit])?)
+        .menu(&Menu::with_items(app, &[&settings, &focus_item, &quit])?)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, e| match e.id.as_ref() {
             "settings" => open_settings(app),
+            "focus" => focus::toggle(app),
             "quit" => app.exit(0),
             _ => {}
         })
@@ -388,6 +415,9 @@ fn main() {
             media::media_control,
             media::media_art,
             claude_reinstall,
+            focus::focus_start,
+            focus::focus_pause,
+            focus::focus_stop,
             drop::drop_stop,
         ])
         .on_window_event(|w, e| match (w.label(), e) {
@@ -410,6 +440,7 @@ fn main() {
                 drop: Mutex::new(None),
             });
             app.manage(media::Art::default());
+            app.manage(focus::Focus::default());
             if first_run {
                 // "Iniciar con Windows" is on by default.
                 if let Err(e) = handle.autolaunch().enable() {
@@ -434,6 +465,8 @@ fn main() {
             }
             let h = handle.clone();
             thread::spawn(move || media::watch(h));
+            let h = handle.clone();
+            thread::spawn(move || focus::run(h));
             thread::spawn(move || watch_visibility(handle));
             Ok(())
         })

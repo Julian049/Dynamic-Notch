@@ -18,6 +18,8 @@ let art = { rev: -1, url: null, color: null }; // cover as a blob: URL and its d
 //   started (turn start), files (paths edited this turn), added, removed, duration + summary (once done) }
 const sessions = new Map();
 let drop = null; // { url, qr, files, inbox }
+let focus = null; // { phase: 'work'|'break'|'long_break', remaining_ms, total_ms, paused, away, cycle, cycles }
+let focusAlert = false; // a phase just ended; stays until the user has seen it
 let received = [];
 let dropError = '';
 let dragging = false;
@@ -31,7 +33,7 @@ let shrinkTimer;
 // ---------- sizing ----------
 
 function hasContent() {
-  return !!(media || claudeSessions().length || drop || dragging);
+  return !!(media || claudeSessions().length || drop || dragging || focus);
 }
 
 function resizeWindow(w, h) {
@@ -71,6 +73,7 @@ document.documentElement.addEventListener('mouseenter', () => {
 });
 document.documentElement.addEventListener('mouseleave', () => {
   hovering = false;
+  focusAlert = false;
   forgetSeenSessions();
   setExpanded(false);
 });
@@ -367,12 +370,42 @@ function showDropError(msg) {
 listen('drop-error', ({ payload }) => showDropError(payload));
 $('drop-close').addEventListener('click', () => invoke('drop_stop'));
 
+// ---------- Modo focus (timer runs in focus.rs) ----------
+
+const FOCUS_LABELS = { work: 'Focus', break: 'Descanso', long_break: 'Descanso largo' };
+const focusText = (f) =>
+  `${FOCUS_LABELS[f.phase]} · ${fmtTime(f.remaining_ms)}` + (f.away ? ' · ausente' : f.paused ? ' · en pausa' : '');
+listen('focus', ({ payload }) => {
+  focus = payload || null;
+  if (!focus) focusAlert = false;
+  render();
+});
+listen('focus-end', () => {
+  focusAlert = true;
+  render();
+});
+$('focus-start').addEventListener('click', () => invoke('focus_start').catch((e) => showDropError(e)));
+$('focus-pause').addEventListener('click', () => invoke('focus_pause'));
+$('focus-stop').addEventListener('click', () => invoke('focus_stop'));
+
+function renderFocus() {
+  $('focus').hidden = !focus || dragging;
+  $('focus-start').hidden = !cfg.focus || !!focus || dragging || !!drop;
+  if (!focus) return;
+  $('focus-phase').textContent = FOCUS_LABELS[focus.phase] + (focus.away ? ' · en pausa: no hay actividad' : focus.paused ? ' · en pausa' : '');
+  $('focus-cycle').textContent = ` ${focus.cycle} de ${focus.cycles}`;
+  $('focus-time').textContent = fmtTime(focus.remaining_ms);
+  $('focus-bar').value = focus.total_ms ? 1 - focus.remaining_ms / focus.total_ms : 0;
+  $('focus-pause').textContent = focus.paused ? 'Reanudar' : 'Pausar';
+}
+
 // ---------- visibility (driven by Rust, see watch_visibility in main.rs) ----------
 
 listen('vis', ({ payload: visible }) => {
   document.body.classList.toggle('hidden', !visible);
   if (!visible) {
     hovering = false;
+    focusAlert = false;
     forgetSeenSessions();
     setExpanded(false);
     render();
@@ -440,6 +473,7 @@ function render() {
   if (dropError) text = dropError;
   else if (dragging) text = 'Suelta para compartir por wifi';
   else if (waiting) text = list.length > 1 ? sessionCount(list) : `${top.project}: esperando permiso`;
+  else if (focus) text = focusText(focus); // during focus the compact shows only the timer
   else if (drop) text = 'Drop activo';
   else if (lyric && playing) text = lyric.cur;
   else if (media) text = [media.title, media.artist].filter(Boolean).join(' — ');
@@ -456,7 +490,7 @@ function render() {
   $('notch').style.setProperty('--notch-bg', tint ? `rgb(${art.color.map((c) => Math.round(c * 0.35)).join(' ')})` : '#000');
   $('eq').classList.toggle('playing', playing);
   $('dot').className = `dot ${top?.state || ''}`;
-  $('notch').classList.toggle('alert', waiting);
+  $('notch').classList.toggle('alert', waiting || focusAlert);
 
   // Expanded.
   $('drag-hint').hidden = !dragging;
@@ -475,6 +509,7 @@ function render() {
     $('ly-next').textContent = lyric.next;
   }
   renderSessions(dragging ? [] : list);
+  renderFocus();
   if (dragging) $('lyrics').hidden = true;
   $('drop').hidden = !drop || dragging;
   if (drop) {
@@ -495,7 +530,7 @@ function render() {
   broadcastSessions();
 
   // Rust keeps the island visible while something is live and wakes it when that starts.
-  const k = playing || list.some((s) => s.state !== 'done') || !!drop;
+  const k = playing || list.some((s) => s.state !== 'done') || !!drop || !!focus;
   if (k !== keep) {
     keep = k;
     invoke('set_keep', { keep });

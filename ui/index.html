@@ -51,6 +51,17 @@
 
         <div class="claude" id="claude" hidden></div>
 
+        <div class="focus" id="focus" hidden>
+          <div class="focus-head"><b id="focus-phase"></b><span id="focus-cycle"></span></div>
+          <div class="focus-time" id="focus-time"></div>
+          <progress id="focus-bar" max="1" value="0"></progress>
+          <div class="focus-actions">
+            <button class="text-btn" id="focus-pause">Pausar</button>
+            <button class="text-btn" id="focus-stop">Terminar</button>
+          </div>
+        </div>
+        <button class="text-btn" id="focus-start" hidden>Iniciar focus</button>
+
         <div class="drop" id="drop" hidden>
           <div class="qr" id="qr"></div>
           <div class="drop-info">

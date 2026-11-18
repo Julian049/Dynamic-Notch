@@ -216,7 +216,7 @@ pub fn stop(app: &AppHandle) {
     }
 }
 
-fn beep() {
+pub fn beep() {
     use windows::Win32::{System::Diagnostics::Debug::MessageBeep, UI::WindowsAndMessaging::MB_OK};
     let _ = unsafe { MessageBeep(MB_OK) };
 }
@@ -249,7 +249,8 @@ fn serve(app: AppHandle, server: Arc<tiny_http::Server>) {
                         "Notification" => cfg.claude_permission,
                         _ => cfg.claude_working,
                     };
-                    if shown {
+                    // During focus work only a permission request gets through.
+                    if shown && (event == "Notification" || !crate::focus::quiet(&app)) {
                         if cfg.sound && event == "Stop" {
                             beep();
                         }
