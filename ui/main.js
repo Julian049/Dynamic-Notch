@@ -425,9 +425,21 @@ function renderFocus() {
 // ---------- Sistema (system.rs) ----------
 
 // Volume and brightness hide 1.5 s after the last change, like the Figma; the rest stay 3 s.
-const NOTICE_MS = { volume: 1500, brightness: 1500 };
+const NOTICE_MS = { volume: 1500, brightness: 1500, notification: 5000 };
 const BATTERY_KINDS = ['charging', 'battery_low', 'bt_connected', 'bt_low'];
-listen('system', ({ payload }) => {
+listen('system', ({ payload }) => showNotice(payload));
+// A new notification replaces the one on screen right away, like on a phone.
+let notifIcon = { aumid: '', url: null };
+listen('notification', ({ payload }) => {
+  showNotice({ kind: 'notification', ...payload });
+  if (notifIcon.aumid === payload.aumid) return;
+  invoke('notif_icon', { aumid: payload.aumid }).then((buf) => {
+    if (notifIcon.url) URL.revokeObjectURL(notifIcon.url);
+    notifIcon = { aumid: payload.aumid, url: buf?.byteLength ? URL.createObjectURL(new Blob([buf])) : null };
+    render();
+  });
+});
+function showNotice(payload) {
   notice = payload;
   clearTimeout(noticeTimer);
   noticeTimer = setTimeout(() => {
@@ -435,7 +447,7 @@ listen('system', ({ payload }) => {
     render();
   }, NOTICE_MS[payload.kind] || 3000);
   render();
-});
+}
 listen('batteries', ({ payload }) => {
   batteries = payload;
   render();
@@ -455,6 +467,8 @@ function noticeText(n) {
       return `${n.name} conectado` + (n.battery != null ? ` · ~${n.battery} %` : '');
     case 'bt_low':
       return `${n.name}: batería baja · ${n.battery} %`;
+    case 'notification':
+      return [n.title || n.app, n.body].filter(Boolean).join(' — ') + (n.more ? ` (+${n.more})` : '');
   }
   return '';
 }
@@ -603,6 +617,16 @@ function render() {
   renderSessions(dragging ? [] : list);
   renderFocus();
   renderBatteries();
+  const notif = notice?.kind === 'notification' && !dragging;
+  $('notif').hidden = !notif;
+  if (notif) {
+    $('notif-app').textContent = notice.app + (notice.more ? ` · +${notice.more} más` : '');
+    $('notif-title').textContent = notice.title;
+    $('notif-body').textContent = notice.body;
+    const url = notifIcon.aumid === notice.aumid ? notifIcon.url : null;
+    $('notif-icon').hidden = !url;
+    if (url && $('notif-icon').src !== url) $('notif-icon').src = url;
+  }
   if (dragging) $('lyrics').hidden = true;
   $('drop').hidden = !drop || dragging;
   if (drop) {

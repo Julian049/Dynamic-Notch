@@ -85,7 +85,12 @@ fn read_art(mgr: &SessionManager, key: &str) -> windows::core::Result<Option<Vec
         return Ok(None);
     }
     let Ok(thumb) = props.Thumbnail() else { return Ok(None) }; // null when the player gives no cover
-    let stream = thumb.OpenReadAsync()?.get()?;
+    read_stream(&thumb)
+}
+
+/// The bytes behind a stream reference (cover art, app logo), up to 16 MB.
+pub fn read_stream(r: &windows::Storage::Streams::IRandomAccessStreamReference) -> windows::core::Result<Option<Vec<u8>>> {
+    let stream = r.OpenReadAsync()?.get()?;
     let size = stream.Size()?;
     if size == 0 || size > 16 << 20 {
         return Ok(None);

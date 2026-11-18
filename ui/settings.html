@@ -80,6 +80,16 @@
     </section>
 
     <section>
+      <div class="row">
+        <span class="text"><b>Mostrar notificaciones en</b><small id="notif-note">En el notch, Windows deja de mostrar el aviso de la esquina y su sonido (se restaura al volver a Windows). Siguen en el centro de notificaciones.</small></span>
+        <select id="notif_target"><option value="windows">Windows</option><option value="notch">Notch</option></select>
+      </div>
+      <div class="row" id="notif-apps-row">
+        <span class="text"><b>Apps</b><small>Desmarca las que prefieras dejar en Windows.</small><span id="notif-apps"></span></span>
+      </div>
+    </section>
+
+    <section>
       <label class="row">
         <span class="text"><b>Volumen y brillo</b><small>Aparece solo cuando los cambias.</small></span>
         <input type="checkbox" role="switch" id="sys_volume">

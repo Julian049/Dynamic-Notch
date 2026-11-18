@@ -14,6 +14,7 @@ webview2-com = "0.39"
 windows-core = "0.62"
 # Same major as `windows` 0.61, whose WinRT APIs take its IIterable.
 windows-collections = "0.2"
+windows-registry = "0.6"
 serde = { version = "1", features = ["derive"] }
 # preserve_order: rewriting the user's settings.json must keep its key order.
 serde_json = { version = "1", features = ["preserve_order"] }
@@ -41,6 +42,9 @@ windows = { version = "0.61", features = [
     "Devices_Enumeration",
     "Devices_Power",
     "Foundation_Collections",
+    "ApplicationModel",
+    "UI_Notifications",
+    "UI_Notifications_Management",
 ] }
 
 [profile.release]

@@ -43,6 +43,11 @@ section {
 }
 .row[hidden], #claude-extra[hidden] { display: none; }
 #claude-extra { border-top: 1px solid var(--line); }
+#notif-apps { display: grid; gap: 4px; margin-top: 6px; }
+.app { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+input.plain { appearance: auto; width: auto; height: auto; border: 0; }
+input.plain::after { content: none; }
+select { font: inherit; padding: 4px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
 button { font: inherit; padding: 5px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg); }
 .row + .row { border-top: 1px solid var(--line); }
 .text { flex: 1; min-width: 0; display: grid; gap: 2px; }

@@ -23,6 +23,29 @@ function fill(s) {
   $('claude-note').textContent = found
     ? `Añade sus hooks a: ${s.claude_targets.join(', ')}`
     : 'No se encontró ninguna carpeta .claude (ni en WSL ni en Windows).';
+  $('notif_target').value = s.notif_notch ? 'notch' : 'windows';
+  $('notif_target').disabled = false;
+  if (s.notif_access !== 'allowed') $('notif-note').textContent = 'Windows no deja leer las notificaciones (Configuración › Privacidad › Notificaciones).';
+  $('notif-apps-row').hidden = !s.notif_notch;
+  const apps = Object.entries(s.notif_apps).sort((a, b) => a[1].localeCompare(b[1]));
+  $('notif-apps').replaceChildren(
+    ...(apps.length ? apps : [['', 'Aparecerán aquí cuando envíen una notificación.']]).map(([aumid, name]) => {
+      const label = document.createElement('label');
+      label.className = 'app';
+      if (aumid) {
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.className = 'plain';
+        box.checked = !s.notif_excluded.includes(aumid);
+        box.addEventListener('change', () =>
+          save({ notif_excluded: box.checked ? s.notif_excluded.filter((a) => a !== aumid) : [...s.notif_excluded, aumid] }),
+        );
+        label.append(box);
+      }
+      label.append(document.createTextNode(` ${name || aumid}`));
+      return label;
+    }),
+  );
   $('claude-extra').hidden = !s.claude;
   $('sound').disabled = !s.claude_done;
   $('claude-status').textContent = s.claude_server ? 'Conectado' : 'Sin servidor: no se pudo abrir el puerto 27823.';
@@ -84,6 +107,8 @@ $('hide_secs').addEventListener('change', (e) => {
   if (Number.isFinite(n) && n >= 2) save({ hide_secs: n });
   else e.target.value = 10;
 });
+
+$('notif_target').addEventListener('change', (e) => save({ notif_notch: e.target.value === 'notch' }));
 
 for (const key of MINUTES) {
   $(key).addEventListener('change', (e) => {

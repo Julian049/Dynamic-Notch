@@ -4,6 +4,7 @@ mod claude;
 mod drop;
 mod focus;
 mod media;
+mod notify;
 mod system;
 
 use serde::{Deserialize, Serialize};
@@ -54,6 +55,14 @@ pub struct Config {
     pub sys_volume: bool,
     pub sys_battery: bool,
     pub sys_bluetooth: bool,
+    /// "Mostrar notificaciones en": true = Notch (the island shows them and silences Windows'), false = Windows.
+    pub notif_notch: bool,
+    /// AUMIDs left to Windows even in Notch mode.
+    pub notif_excluded: Vec<String>,
+    /// Apps seen sending notifications (AUMID → name), for the list in Ajustes.
+    pub notif_apps: std::collections::BTreeMap<String, String>,
+    /// Apps whose Windows banner/sound we turned off, with their original values (restored on the way back).
+    pub notif_touched: std::collections::BTreeMap<String, notify::Original>,
     /// Minutes.
     pub focus_work: u64,
     pub focus_break: u64,
@@ -81,6 +90,10 @@ impl Default for Config {
             sys_volume: true,
             sys_battery: true,
             sys_bluetooth: true,
+            notif_notch: false,
+            notif_excluded: vec![],
+            notif_apps: Default::default(),
+            notif_touched: Default::default(),
             focus_work: 25,
             focus_break: 5,
             focus_long: 15,
@@ -123,7 +136,7 @@ fn config_path(app: &AppHandle) -> PathBuf {
     app.path().app_config_dir().expect("config dir").join("config.json")
 }
 
-fn save_config(app: &AppHandle, cfg: &Config) -> Result<(), String> {
+pub fn save_config(app: &AppHandle, cfg: &Config) -> Result<(), String> {
     let path = config_path(app);
     fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
     fs::write(&path, serde_json::to_string_pretty(cfg).unwrap()).map_err(|e| e.to_string())
@@ -258,6 +271,11 @@ fn wake_island(app: AppHandle) {
     wake(&app);
 }
 
+/// Tells every window the current settings (after a change made outside set_settings).
+pub fn emit_settings(app: &AppHandle) {
+    let _ = app.emit("settings", settings_json(app, &claude::targets()));
+}
+
 fn settings_json(app: &AppHandle, targets: &[PathBuf]) -> Value {
     let c = app.state::<AppState>().cfg.lock().unwrap().clone();
     json!({
@@ -277,6 +295,10 @@ fn settings_json(app: &AppHandle, targets: &[PathBuf]) -> Value {
         "sys_volume": c.sys_volume,
         "sys_battery": c.sys_battery,
         "sys_bluetooth": c.sys_bluetooth,
+        "notif_notch": c.notif_notch,
+        "notif_excluded": c.notif_excluded,
+        "notif_apps": c.notif_apps,
+        "notif_access": notify::access_status(),
         "focus_work": c.focus_work,
         "focus_break": c.focus_break,
         "focus_long": c.focus_long,
@@ -321,6 +343,12 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
             *field = b;
         }
     }
+    if let Some(b) = patch["notif_notch"].as_bool() {
+        cfg.notif_notch = b;
+    }
+    if let Some(list) = patch["notif_excluded"].as_array() {
+        cfg.notif_excluded = list.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+    }
     if let Some(n) = patch["hide_secs"].as_u64() {
         cfg.hide_secs = n.clamp(2, 3600);
     }
@@ -350,6 +378,9 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
     }
     if !drop_on {
         drop::stop(&app);
+    }
+    if patch.get("notif_notch").is_some() || patch.get("notif_excluded").is_some() {
+        notify::apply(&app);
     }
     let targets = claude::targets();
     let s = settings_json(&app, &targets);
@@ -437,6 +468,7 @@ fn main() {
             media::media_control,
             media::media_art,
             claude_reinstall,
+            notify::notif_icon,
             focus::focus_start,
             focus::focus_pause,
             focus::focus_stop,
@@ -463,6 +495,7 @@ fn main() {
             });
             app.manage(media::Art::default());
             app.manage(focus::Focus::default());
+            app.manage(notify::Icons::default());
             if first_run {
                 // "Iniciar con Windows" is on by default.
                 if let Err(e) = handle.autolaunch().enable() {
@@ -491,6 +524,8 @@ fn main() {
             thread::spawn(move || focus::run(h));
             let h = handle.clone();
             thread::spawn(move || system::run(h));
+            let h = handle.clone();
+            thread::spawn(move || notify::run(h));
             thread::spawn(move || watch_visibility(handle));
             Ok(())
         })

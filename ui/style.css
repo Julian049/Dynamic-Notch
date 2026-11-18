@@ -180,7 +180,12 @@ svg[hidden] { display: none; }
 .focus progress { width: 100%; height: 4px; accent-color: var(--fg); }
 .focus-actions { display: flex; gap: 8px; }
 .batteries { display: grid; gap: 4px; padding-top: 10px; border-top: 1px solid var(--line); }
-.batteries[hidden] { display: none; }
+.batteries[hidden], .notif[hidden], .notif-icon[hidden] { display: none; }
+.notif { display: flex; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.notif-icon { width: 32px; height: 32px; border-radius: 8px; flex: none; }
+.notif-text { min-width: 0; display: grid; gap: 2px; }
+.notif-app { color: var(--fg-dim); font-size: 11px; }
+.notif-text div:last-child { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .battery-row { display: flex; justify-content: space-between; color: var(--fg-dim); }
 .battery-row .pct { font-variant-numeric: tabular-nums; color: var(--fg); }
 .battery-row.low .pct { color: var(--waiting); }
