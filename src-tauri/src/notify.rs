@@ -229,6 +229,7 @@ pub fn run(app: AppHandle) {
         let (_, n, t) = fresh.pop().unwrap();
         let Ok(info) = n.AppInfo() else { continue };
         let mut aumid = info.AppUserModelId().map(|a| a.to_string()).unwrap_or_default();
+        let host = aumid.clone(); // Phone Link's own AUMID, for the corner badge
         let mut name = info.DisplayInfo().and_then(|d| d.DisplayName()).map(|d| d.to_string()).unwrap_or_default();
         let (real, logo) = toast_source(n.Id().unwrap_or(0)).unzip();
         if let Some(real) = real {
@@ -262,10 +263,19 @@ pub fn run(app: AppHandle) {
                 icons.0.lock().unwrap().insert(aumid.clone(), bytes);
             }
         }
+        let badge = aumid.contains("!YourPhoneNotifications_").then_some(host);
+        if let Some(b) = &badge {
+            if !icons.0.lock().unwrap().contains_key(b) {
+                if let Some(bytes) = icon(&n) {
+                    icons.0.lock().unwrap().insert(b.clone(), bytes);
+                }
+            }
+        }
         let mut t = t.into_iter();
         wake(&app);
         let _ = app.emit_to("island", "notification", json!({
             "aumid": aumid,
+            "badge": badge,
             "app": name,
             "title": title.unwrap_or_else(|| t.next().unwrap_or_default()),
             "body": body.unwrap_or_else(|| t.collect::<Vec<_>>().join(" ")),

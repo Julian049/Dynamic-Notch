@@ -480,13 +480,18 @@ listen('notification', ({ payload }) => {
   if (!hovering) pending = [{ ...payload, at: Date.now() }, ...pending].slice(0, 20);
   showNotice({ kind: 'notification', ...payload });
   setExpanded(true); // Figma: a notification arrives with the notch open; it closes with the notice
-  if (payload.aumid in notifIcons) return;
-  notifIcons[payload.aumid] = null;
-  invoke('notif_icon', { aumid: payload.aumid }).then((buf) => {
-    notifIcons[payload.aumid] = buf?.byteLength ? URL.createObjectURL(new Blob([buf])) : null;
+  for (const id of [payload.aumid, payload.badge]) loadIcon(id);
+});
+function loadIcon(id) {
+  if (!id || id in notifIcons) return;
+  notifIcons[id] = null;
+  invoke('notif_icon', { aumid: id }).then((buf) => {
+    notifIcons[id] = buf?.byteLength ? URL.createObjectURL(new Blob([buf])) : null;
     render();
   });
-});
+}
+// The phone's own logo (Phone Link) in the corner of an app icon that came from the phone.
+const badgeImg = (n) => (n.badge && notifIcons[n.badge] ? [Object.assign(document.createElement('img'), { src: notifIcons[n.badge], alt: '', className: 'from-phone' })] : []);
 function showNotice(payload) {
   notice = payload;
   clearTimeout(noticeTimer);
@@ -637,18 +642,19 @@ function renderClaude(list) {
 // ---------- Notifications and Drop (expanded) ----------
 
 // App logo (only packaged apps have one), else a coloured tile with the app's initial.
-function appTile(aumid, name, cls = '') {
+function appTile(aumid, name, cls = '', badge = []) {
   const t = el('span', `napp ${cls}`);
   if (notifIcons[aumid]) t.append(Object.assign(document.createElement('img'), { src: notifIcons[aumid], alt: '' }));
   else {
     t.textContent = (name || '?').trim().charAt(0).toUpperCase();
     t.style.background = `hsl(${[...(name || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0)} 55% 45%)`;
   }
+  t.append(...badge);
   return t;
 }
 
 function renderNotif() {
-  $('notif-icon').replaceWith(Object.assign(appTile(notice.aumid, notice.app), { id: 'notif-icon' }));
+  $('notif-icon').replaceWith(Object.assign(appTile(notice.aumid, notice.app, '', badgeImg(notice)), { id: 'notif-icon' }));
   $('notif-title').textContent = notice.title || notice.app;
   $('notif-app').textContent = notice.title && !notice.more ? notice.app : '';
   $('notif-count').hidden = !notice.more;
@@ -668,7 +674,7 @@ function renderPending() {
       const row = el('div', 'srow');
       const meta = el('div', 'meta');
       meta.append(el('div', 'name', n.title || n.app), el('div', 'what', n.body || n.app));
-      row.append(appTile(n.aumid, n.app, 'sm'), meta, span('time', ago(n.at)));
+      row.append(appTile(n.aumid, n.app, 'sm', badgeImg(n)), meta, span('time', ago(n.at)));
       return row;
     }),
   );
@@ -877,6 +883,7 @@ function noticeView(v, n) {
         fallback.append(img('bubble', 12.4, 12.4));
         box.append(fallback);
       }
+      box.append(...badgeImg(n));
       v.lead = [box];
       v.trail = [span('cap', n.more ? `+${n.more} más` : 'ahora')];
       return;
