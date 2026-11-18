@@ -21,8 +21,12 @@
       </div>
 
       <div class="full" id="full">
-        <!-- placeholder: crude on purpose until the Figma redesign -->
-        <div id="drag-hint" hidden style="font-size:20px;padding:16px 0;text-align:center">SUÉLTALO AQUÍ</div>
+        <!-- Figma "Share · Drag Over": dashed drop zone -->
+        <div class="dragzone" id="drag-hint" hidden>
+          <span class="ic" style="--i:url(icons/notch-share.svg)"></span>
+          <div class="title">Suelta para compartir</div>
+          <div class="sub">Se genera un QR para tu teléfono</div>
+        </div>
         <!-- Expanded views (Figma "Size=Expanded"): render() shows one, picked by pickView() in main.js.
              The mode chips (#chips) move into the .chip-slot of the view on screen. -->
         <div class="media view" id="media" hidden>
@@ -80,24 +84,39 @@
 
         <div class="batteries view" id="batteries" hidden></div>
 
-        <div class="notif" id="notif" hidden>
-          <img class="notif-icon" id="notif-icon" alt="">
-          <div class="notif-text">
-            <div class="notif-app" id="notif-app"></div>
-            <b id="notif-title"></b>
-            <div id="notif-body"></div>
+        <!-- Figma "Notification · Expanded" / "Notification Stack": one notification, or several at once -->
+        <div class="notif view" id="notif" hidden>
+          <span class="napp" id="notif-icon"></span>
+          <div class="meta">
+            <div class="nhead"><b class="title" id="notif-title"></b><span class="sub" id="notif-app"></span><span class="count" id="notif-count" hidden></span><span class="when">ahora</span></div>
+            <p class="nbody" id="notif-body"></p>
           </div>
         </div>
 
-        <div class="drop" id="drop" hidden>
+        <!-- Figma "Notifications · Pending": what arrived while the notch was closed -->
+        <div class="pending view" id="pending" hidden>
+          <div class="vhead">
+            <div class="meta"><div class="title">Notificaciones</div><div class="sub" id="pending-sub"></div></div>
+            <span class="chip-slot"></span>
+          </div>
+          <div class="card rows" id="pending-rows"></div>
+          <div class="more" id="pending-more" hidden></div>
+        </div>
+
+        <!-- Figma "Share · Ready": the file, the QR and how long it stays available -->
+        <div class="drop view" id="drop" hidden>
+          <div class="vhead">
+            <span class="ftype" id="drop-type"></span>
+            <div class="meta"><div class="title" id="drop-name"></div><div class="sub" id="drop-size"></div></div>
+            <button class="xbtn" id="drop-close" aria-label="Cerrar"><span class="ic" style="--i:url(icons/notch-close.svg)"></span></button>
+          </div>
           <div class="qr" id="qr"></div>
-          <div class="drop-info">
-            <div class="drop-title">Escanea con el celular</div>
-            <div class="drop-files" id="drop-url" style="user-select:text"></div>
-            <div class="drop-files" id="drop-files"></div>
-            <div class="drop-note" id="drop-note"></div>
-            <div class="drop-note">¿No abre en Android? Dale al navegador el permiso de red local (Ajustes › Apps › navegador › Permisos).</div>
-            <button class="text-btn" id="drop-close">Cerrar</button>
+          <div class="drop-text">
+            <div class="title">Escanea con tu teléfono</div>
+            <div class="sub" id="drop-note"></div>
+            <div class="sub small" id="drop-url" style="user-select:text"></div>
+            <div class="sub small">¿No abre en Android? Dale al navegador el permiso de red local.</div>
+            <div class="avail"><i></i><span id="drop-left"></span></div>
           </div>
         </div>
       </div>

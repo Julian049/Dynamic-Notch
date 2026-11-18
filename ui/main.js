@@ -10,7 +10,7 @@ const SIZE_EMPTY = [190, 30]; // Figma "None · Idle"
 const COMPACT_H = { classic: 34, win11: 40 };
 let compactW = 330;
 const WIDTH_EXPANDED = 460; // expanded width of the views without a Figma width (Drop, notification)
-const VIEW_W = { music: 500, claude: 420, focus: 400, batteries: 380 }; // Figma "Size=Expanded" bodies
+const VIEW_W = { music: 500, claude: 420, focus: 400, batteries: 380, drag: 380, drop: 380, notif: 420, pending: 420 }; // Figma "Size=Expanded" bodies
 const ANIM_MS = 520; // longest .shape transition in style.css
 
 let cfg = { claude: false, music: true, lyrics: true, art_color: true, eq: true, claude_working: true, claude_done: true, claude_permission: true };
@@ -32,7 +32,8 @@ let sent = ''; // "Enviado · <name>" for 3 s
 let sentTimer;
 // Unseen notifications for the bell (Figma "Music + Notifications"): one per notification that arrives
 // while the notch is not expanded. Expanding the notch shows them, so it counts them all as seen.
-let unseen = 0;
+let pending = []; // notifications that arrived while the notch was closed (Figma "Notifications · Pending"); cleared when it collapses
+let wasExpanded = false;
 let dropError = '';
 let dragging = false;
 let dragArmed = false; // Rust saw a drag start somewhere (maybe not a file)
@@ -68,7 +69,7 @@ async function layout() {
   const notch = $('notch');
   // The expanded width is set before measuring the height, which depends on it.
   if (expanded) notch.style.setProperty('--xw', `${VIEW_W[shownView] || WIDTH_EXPANDED}px`);
-  const [w, h] = expanded ? [VIEW_W[shownView] || WIDTH_EXPANDED, $('full').scrollHeight] : idle ? SIZE_EMPTY : [compactW, COMPACT_H[win11 ? 'win11' : 'classic']];
+  const [w, h] = expanded ? [VIEW_W[shownView] || WIDTH_EXPANDED, $('full').offsetHeight] : idle ? SIZE_EMPTY : [compactW, COMPACT_H[win11 ? 'win11' : 'classic']];
   const z = ZOOM[cfg.size] || 1;
   let ww = Math.ceil((w + 2 * (EAR + PAD)) * z) + (win11 ? 2 * WIN11_SHADOW : 0);
   let wh = Math.ceil((h + PAD + (win11 ? WIN11_GAP : 0)) * z) + (win11 ? WIN11_SHADOW : 0);
@@ -211,6 +212,7 @@ setInterval(() => {
 // Keep the "Trabajando… 2:14" clocks running.
 setInterval(() => {
   if (claudeSessions().some((s) => s.state !== 'done')) render();
+  else renderDropLeft();
 }, 1000);
 
 // Ajustes › Conexiones lists the sessions too; it asks when it opens.
@@ -470,14 +472,14 @@ const noticeMs = (kind) =>
 const BATTERY_KINDS = ['charging', 'battery_low', 'bt_connected', 'bt_low'];
 listen('system', ({ payload }) => showNotice(payload));
 // A new notification replaces the one on screen right away, like on a phone.
-let notifIcon = { aumid: '', url: null };
+const notifIcons = {}; // aumid -> object URL (null: the app has no logo)
 listen('notification', ({ payload }) => {
-  if (!expanded) unseen++;
+  if (!expanded) pending = [{ ...payload, at: Date.now() }, ...pending].slice(0, 20);
   showNotice({ kind: 'notification', ...payload });
-  if (notifIcon.aumid === payload.aumid) return;
+  if (payload.aumid in notifIcons) return;
+  notifIcons[payload.aumid] = null;
   invoke('notif_icon', { aumid: payload.aumid }).then((buf) => {
-    if (notifIcon.url) URL.revokeObjectURL(notifIcon.url);
-    notifIcon = { aumid: payload.aumid, url: buf?.byteLength ? URL.createObjectURL(new Blob([buf])) : null };
+    notifIcons[payload.aumid] = buf?.byteLength ? URL.createObjectURL(new Blob([buf])) : null;
     render();
   });
 });
@@ -627,12 +629,78 @@ function renderClaude(list) {
   body.replaceChildren(...rows);
 }
 
+// ---------- Notifications and Drop (expanded) ----------
+
+// App logo (only packaged apps have one), else a coloured tile with the app's initial.
+function appTile(aumid, name, cls = '') {
+  const t = el('span', `napp ${cls}`);
+  if (notifIcons[aumid]) t.append(Object.assign(document.createElement('img'), { src: notifIcons[aumid], alt: '' }));
+  else {
+    t.textContent = (name || '?').trim().charAt(0).toUpperCase();
+    t.style.background = `hsl(${[...(name || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0)} 55% 45%)`;
+  }
+  return t;
+}
+
+function renderNotif() {
+  $('notif-icon').replaceWith(Object.assign(appTile(notice.aumid, notice.app), { id: 'notif-icon' }));
+  $('notif-title').textContent = notice.title || notice.app;
+  $('notif-app').textContent = notice.title && !notice.more ? notice.app : '';
+  $('notif-count').hidden = !notice.more;
+  $('notif-count').textContent = `${(notice.more || 0) + 1} notificaciones`;
+  $('notif-body').textContent = notice.body;
+}
+
+const ago = (t) => {
+  const m = Math.floor((Date.now() - t) / 60000);
+  return m < 1 ? 'ahora' : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h`;
+};
+const MAX_PENDING = 3;
+function renderPending() {
+  $('pending-sub').textContent = `${pending.length} sin ver`;
+  $('pending-rows').replaceChildren(
+    ...pending.slice(0, MAX_PENDING).map((n) => {
+      const row = el('div', 'srow');
+      const meta = el('div', 'meta');
+      meta.append(el('div', 'name', n.title || n.app), el('div', 'what', n.body || n.app));
+      row.append(appTile(n.aumid, n.app, 'sm'), meta, span('time', ago(n.at)));
+      return row;
+    }),
+  );
+  $('pending-more').hidden = pending.length <= MAX_PENDING;
+  $('pending-more').textContent = `+${pending.length - MAX_PENDING} más`;
+}
+
+const fmtBytes = (b) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : b < 1024 ** 3 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${(b / 1024 ** 3).toFixed(1)} GB`);
+function renderDrop() {
+  if ($('qr').dataset.url !== drop.url) {
+    $('qr').innerHTML = drop.qr; // SVG generated by our own Rust code (drop.rs)
+    $('qr').dataset.url = drop.url;
+  }
+  const n = drop.files.length;
+  const ext = n === 1 ? (drop.files[0].match(/\.([^.]{1,4})$/)?.[1] || '').toUpperCase() : '';
+  $('drop-type').textContent = n === 1 ? ext || 'ARCH' : String(n);
+  $('drop-type').classList.toggle('empty', !n);
+  $('drop-name').textContent = n === 1 ? drop.files[0] : n ? `${n} archivos` : 'Recibir archivos';
+  $('drop-size').textContent = n ? fmtBytes(drop.bytes) : 'Sin archivos para enviar';
+  $('drop-url').textContent = drop.url;
+  $('drop-note').textContent = received.length
+    ? `Recibido en ${drop.inbox}: ${received.join(', ')}`
+    : n
+      ? `Abre la cámara y apunta al código. ${n === 1 ? 'El archivo se envía' : 'Los archivos se envían'} directo, sin subirlo a la nube.`
+      : `Abre la cámara y apunta al código para enviar archivos. Se guardan en ${drop.inbox}.`;
+  renderDropLeft();
+}
+function renderDropLeft() {
+  if (drop) $('drop-left').textContent = `Disponible ${fmtTime(drop.expires_ms - Date.now())}`;
+}
+
 // ---------- expanded view ----------
 
-const VIEW_EL = { music: 'media', claude: 'claude', focus: 'focus', batteries: 'batteries', notif: 'notif', drop: 'drop' };
-const MODES = ['music', 'claude', 'focus'];
+const VIEW_EL = { music: 'media', claude: 'claude', focus: 'focus', batteries: 'batteries', notif: 'notif', pending: 'pending', drop: 'drop' };
+const MODES = ['music', 'claude', 'focus', 'pending'];
 // The modes a chip can switch to. Focus is always there when enabled: its view starts a session.
-const modes = (list) => MODES.filter((m) => (m === 'music' ? !!media : m === 'claude' ? list.length > 0 : !!focus || !!cfg.focus));
+const modes = (list) => MODES.filter((m) => (m === 'music' ? !!media : m === 'claude' ? list.length > 0 : m === 'pending' ? pending.length > 0 : !!focus || !!cfg.focus));
 
 // What the expanded notch shows, most urgent first (like compactView); null: nothing to expand to.
 function pickView(list) {
@@ -642,6 +710,7 @@ function pickView(list) {
   if (list[0]?.state === 'waiting') return 'claude';
   if (notice?.kind === 'notification') return 'notif';
   if (BATTERY_KINDS.includes(notice?.kind)) return 'batteries';
+  if (pending.length) return 'pending';
   if (list.some((s) => s.state === 'done') && !focus) return 'claude';
   if (focus) return 'focus';
   if (media) return 'music';
@@ -651,8 +720,8 @@ function pickView(list) {
 
 // "Cambiar de modo": one chip per mode in the view's top-right corner, when there are two or more.
 // Kept across renders (rebuilt only when the set changes) so a click never lands on a replaced button.
-const CHIP_ICON = { music: () => icon('note', 'ic14'), claude: () => img('claude', 14.08, 10.24), focus: () => icon('moon', 'ic14') };
-const CHIP_LABEL = { music: 'Música', claude: 'Claude Code', focus: 'Modo focus' };
+const CHIP_ICON = { music: () => icon('note', 'ic14'), claude: () => img('claude', 14.08, 10.24), focus: () => icon('moon', 'ic14'), pending: () => icon('bell', 'ic14') };
+const CHIP_LABEL = { music: 'Música', claude: 'Claude Code', focus: 'Modo focus', pending: 'Notificaciones' };
 const chipsBox = el('div', 'chips');
 chipsBox.addEventListener('click', (e) => {
   const b = e.target.closest('button');
@@ -794,7 +863,7 @@ function noticeView(v, n) {
     case 'notification': {
       Object.assign(v, { w: 380, cls: 'pl10 ell', main: n.title || n.app, sub: n.title ? n.body : '', subCls: 'sec' });
       const box = el('span', 'app-icon');
-      const url = notifIcon.aumid === n.aumid ? notifIcon.url : null;
+      const url = notifIcons[n.aumid];
       if (url) {
         if (notifImg.src !== url) notifImg.src = url;
         box.append(notifImg);
@@ -849,9 +918,9 @@ function compactView(list, lyric) {
     }
   } else if (top) claudeView(v, list);
   // Passive again with notifications not seen yet: the bell with their count.
-  if (unseen && !notice && !dropError && !dragging) {
+  if (pending.length && !notice && !dropError && !dragging) {
     v.w += 60;
-    v.trail.push(el('span', 'divider'), badged('bell', icon('bell'), unseen));
+    v.trail.push(el('span', 'divider'), badged('bell', icon('bell'), pending.length));
   }
   return v;
 }
@@ -863,7 +932,8 @@ function render() {
   const waiting = top?.state === 'waiting';
   const lyric = currentLyric();
   lastLyricIndex = lyric ? lyric.i : -2;
-  if (expanded) unseen = 0;
+  if (!expanded && wasExpanded) pending = [];
+  wasExpanded = expanded;
 
   const v = compactView(list, lyric);
   compactW = v.w;
@@ -894,27 +964,9 @@ function render() {
   else if (shownView === 'focus') renderFocus();
   else if (shownView === 'batteries') renderBatteries();
   renderChips(shownView, list);
-  if (shownView === 'notif' && notice?.kind === 'notification') {
-    $('notif-app').textContent = notice.app + (notice.more ? ` · +${notice.more} más` : '');
-    $('notif-title').textContent = notice.title;
-    $('notif-body').textContent = notice.body;
-    const url = notifIcon.aumid === notice.aumid ? notifIcon.url : null;
-    $('notif-icon').hidden = !url;
-    if (url && $('notif-icon').src !== url) $('notif-icon').src = url;
-  }
-  if (drop) {
-    if ($('qr').dataset.url !== drop.url) {
-      $('qr').innerHTML = drop.qr; // SVG generated by our own Rust code (drop.rs)
-      $('qr').dataset.url = drop.url;
-    }
-    $('drop-files').textContent = drop.files.length
-      ? `Compartiendo: ${drop.files.join(', ')}`
-      : 'Sin archivos para descargar; puedes enviar desde el celular.';
-    $('drop-url').textContent = drop.url;
-    $('drop-note').textContent = received.length
-      ? `Recibido en ${drop.inbox}: ${received.join(', ')}`
-      : `Lo que envíes se guarda en ${drop.inbox}. Se cierra solo a los 10 minutos.`;
-  }
+  if (shownView === 'notif' && notice?.kind === 'notification') renderNotif();
+  else if (shownView === 'pending' && expanded) renderPending();
+  if (drop) renderDrop();
 
   layout().then(() => setMarquee(v.main, v.sub));
   broadcastSessions();

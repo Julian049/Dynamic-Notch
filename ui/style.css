@@ -228,24 +228,12 @@ button svg { width: 20px; height: 20px; fill: currentColor; }
 /* The hidden attribute does not hide SVG elements by itself. */
 svg[hidden] { display: none; }
 
-.notif { display: flex; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-.notif-icon { width: 32px; height: 32px; border-radius: 8px; flex: none; }
-.notif-text { min-width: 0; display: grid; gap: 2px; }
-.notif-app { color: var(--fg-dim); font-size: 11px; }
-.notif-text div:last-child { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .dot.working { background: var(--accent-claude); }
 .dot.waiting { background: var(--attention); }
 .dot.done { background: var(--positive); }
 body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { opacity: 0.3; }
 
-.drop { display: flex; gap: 16px; align-items: center; }
-.drop[hidden] { display: none; }
-.qr { flex: none; width: 148px; height: 148px; border-radius: 12px; overflow: hidden; background: #fff; }
-.qr svg { display: block; width: 100%; height: 100%; }
-.drop-info { min-width: 0; display: grid; gap: 6px; justify-items: start; }
-.drop-title { font-size: 14px; font-weight: 600; }
-.drop-files, .drop-note { color: var(--fg-dim); font-size: 12px; overflow-wrap: anywhere; }
 .text-btn {
   width: auto;
   height: 28px;
@@ -340,3 +328,42 @@ body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { 
 .drow .tile { flex: none; width: 36px; height: 36px; border-radius: 10px; background: rgb(255 255 255 / 0.08); display: grid; place-items: center; color: var(--text-1); }
 .drow .tile .ic { width: 18px; height: 18px; }
 .drow.low .what, .drow.low .pct { color: var(--negative); }
+
+/* Share (Figma "Drag Over" / "Ready") */
+.full.v-drag { padding: 14px 18px 18px; }
+.dragzone { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 22px 0 20px; border: 1.5px dashed var(--accent-share); border-radius: 22px; background: rgb(100 210 255 / 0.07); }
+.dragzone .ic { width: 20px; height: 20px; color: var(--accent-share); margin-bottom: 6px; }
+.dragzone .title { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.225px; color: var(--text-1); }
+.dragzone .sub { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.full.v-drop { padding: 14px 18px 20px; gap: 14px; }
+.drop { align-items: stretch; }
+.drop .vhead { gap: 12px; }
+.ftype { flex: none; width: 42px; height: 42px; box-sizing: border-box; border-radius: 10px; background: #2c2c2e; border-top: 3px solid var(--accent-share); display: grid; place-items: center; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06px; color: var(--text-1); }
+.ftype.empty { color: var(--text-3); }
+.xbtn { flex: none; width: 28px; height: 28px; border-radius: 14px; background: rgb(255 255 255 / 0.16); color: var(--text-1); display: grid; place-items: center; }
+.xbtn:hover { background: rgb(255 255 255 / 0.24); }
+.xbtn .ic { width: 16px; height: 16px; }
+.qr { align-self: center; width: 132px; height: 132px; box-sizing: border-box; padding: 4px; border-radius: 18px; overflow: hidden; background: #fff; }
+.qr svg { display: block; width: 100%; height: 100%; }
+.drop-text { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.drop-text .title { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.225px; color: var(--text-1); }
+.drop-text .sub { font-size: 13px; line-height: 18px; letter-spacing: -0.078px; color: var(--text-2); overflow-wrap: anywhere; }
+.drop-text .sub.small { font-size: 11px; line-height: 14px; color: var(--text-3); }
+.avail { display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 14px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.avail i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-share); }
+
+/* Notifications (Figma "Notification Expanded / Stack / Pending") */
+.full.v-notif { padding: 14px 18px 18px; }
+.notif { flex-direction: row; align-items: flex-start; gap: 12px; }
+.napp { position: relative; flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; font-weight: 600; color: #fff; overflow: hidden; }
+.napp img { width: 100%; height: 100%; object-fit: cover; }
+.napp.sm { width: 36px; height: 36px; border-radius: 10px; font-size: 16px; }
+.nhead { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; }
+.nhead .sub { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--text-3); }
+.nhead .when { flex: none; margin-left: auto; font-size: 12px; line-height: 16px; color: var(--text-3); }
+.count { flex: none; padding: 1px 8px; border-radius: 999px; background: rgb(255 255 255 / 0.14); font-size: 11px; line-height: 14px; font-weight: 500; color: var(--text-2); }
+.nbody { margin: 0; font-size: 13px; line-height: 18px; letter-spacing: -0.078px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
+.notif .meta { white-space: normal; gap: 4px; }
+.full.v-pending { padding: 14px 18px 14px; gap: 14px; }
+.pending .more { text-align: center; font-size: 11px; line-height: 14px; color: var(--text-3); }
+.pending .srow .meta { flex: 1; }
