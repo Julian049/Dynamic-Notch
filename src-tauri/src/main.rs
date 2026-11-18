@@ -47,6 +47,8 @@ pub struct Config {
     pub claude_done: bool,
     pub claude_permission: bool,
     pub focus: bool,
+    /// "Compartir archivos" (Drop).
+    pub drop: bool,
     /// Minutes.
     pub focus_work: u64,
     pub focus_break: u64,
@@ -70,6 +72,7 @@ impl Default for Config {
             claude_done: true,
             claude_permission: true,
             focus: false,
+            drop: true,
             focus_work: 25,
             focus_break: 5,
             focus_long: 15,
@@ -165,9 +168,9 @@ fn watch_visibility(app: AppHandle) {
     let state = app.state::<AppState>();
     loop {
         thread::sleep(Duration::from_millis(100));
-        let (autohide, hide_secs) = {
+        let (autohide, hide_secs, drop_on) = {
             let c = state.cfg.lock().unwrap();
-            (c.autohide, c.hide_secs)
+            (c.autohide, c.hide_secs, c.drop)
         };
         let Some(w) = island(&app) else { continue };
         let Ok(Some(m)) = w.primary_monitor() else { continue };
@@ -192,7 +195,7 @@ fn watch_visibility(app: AppHandle) {
         let now = Instant::now();
         let mut v = state.vis.lock().unwrap();
         if lbutton && !v.lbutton_was_down {
-            v.dragging_in = !in_drag_zone;
+            v.dragging_in = drop_on && !in_drag_zone; // Drop off: drags don't wake or grow the island
             v.press = Some(p);
         }
         if !lbutton {
@@ -262,6 +265,7 @@ fn settings_json(app: &AppHandle, targets: &[PathBuf]) -> Value {
         "claude_done": c.claude_done,
         "claude_permission": c.claude_permission,
         "focus": c.focus,
+        "drop": c.drop,
         "focus_work": c.focus_work,
         "focus_break": c.focus_break,
         "focus_long": c.focus_long,
@@ -297,6 +301,7 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
         ("claude_done", &mut cfg.claude_done),
         ("claude_permission", &mut cfg.claude_permission),
         ("focus", &mut cfg.focus),
+        ("drop", &mut cfg.drop),
     ] {
         if let Some(b) = patch[key].as_bool() {
             *field = b;
@@ -323,11 +328,14 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
         }
         cfg.claude = on;
     }
-    let focus_on = cfg.focus;
+    let (focus_on, drop_on) = (cfg.focus, cfg.drop);
     *state.cfg.lock().unwrap() = cfg.clone();
     save_config(&app, &cfg)?;
     if !focus_on {
         focus::stop(&app);
+    }
+    if !drop_on {
+        drop::stop(&app);
     }
     let targets = claude::targets();
     let s = settings_json(&app, &targets);

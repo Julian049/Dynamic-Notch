@@ -1,10 +1,10 @@
 //! Drop: shares dropped files over the local network (and receives uploads) behind a random URL token.
 
 use crate::AppState;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::{
     fs::{self, File, OpenOptions},
-    io,
+    io::{self, Read},
     net::{IpAddr, UdpSocket},
     path::{Path, PathBuf},
     sync::Arc,
@@ -114,7 +114,39 @@ fn create_unique(dir: &Path, name: &str) -> io::Result<(PathBuf, File)> {
     Err(io::Error::other("demasiados archivos con ese nombre"))
 }
 
+/// A download body that reports `drop-sending` {name, sent, total} on each whole percent and
+/// `drop-sent` once the last byte has been read.
+struct Progress<'a> {
+    file: File,
+    name: String,
+    sent: u64,
+    total: u64,
+    pct: u64,
+    on_event: &'a dyn Fn(&str, Value),
+}
+
+impl Read for Progress<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let n = self.file.read(buf)?;
+        self.sent += n as u64;
+        let pct = if self.total == 0 { 100 } else { self.sent * 100 / self.total };
+        if n > 0 && pct != self.pct {
+            self.pct = pct;
+            (self.on_event)("drop-sending", json!({ "name": self.name, "sent": self.sent, "total": self.total }));
+        }
+        // shortcut: "read to the end" means handed to the socket, not confirmed by the phone; fine on a LAN.
+        if n == 0 && self.sent == self.total && self.pct != u64::MAX {
+            self.pct = u64::MAX;
+            (self.on_event)("drop-sent", json!(self.name));
+        }
+        Ok(n)
+    }
+}
+
 pub fn start(app: &AppHandle, paths: Vec<PathBuf>) -> Result<(), String> {
+    if !app.state::<AppState>().cfg.lock().unwrap().drop {
+        return Err("Compartir archivos está desactivado en Ajustes".into());
+    }
     stop(app);
     let files: Vec<PathBuf> = paths.into_iter().filter(|p| p.is_file()).collect();
     let ip = lan_ip().ok_or("No hay conexión a una red local")?;
@@ -210,7 +242,7 @@ fn ensure_server(app: &AppHandle) -> Result<(), String> {
                 let session = a.state::<AppState>().drop.lock().unwrap().as_ref().map(|d| (d.token.clone(), d.files.clone(), d.inbox.clone()));
                 match session {
                     Some((t, files, inbox)) => {
-                        handle(req, &t, &files, &inbox, &|name| drop(a.emit_to("island", "drop-received", name)))
+                        handle(req, &t, &files, &inbox, &|event, payload| drop(a.emit_to("island", event, payload)))
                     }
                     None => drop(req.respond(Response::empty(404))),
                 }
@@ -236,7 +268,8 @@ fn header(k: &str, v: &str) -> Header {
     Header::from_bytes(k.as_bytes(), v.as_bytes()).expect("valid header")
 }
 
-fn handle(mut req: Request, token: &str, files: &[PathBuf], inbox: &Path, on_received: &dyn Fn(String)) {
+/// `on_event(name, payload)`: `drop-received` (file name), `drop-sending`, `drop-sent` (see `Progress`).
+fn handle(mut req: Request, token: &str, files: &[PathBuf], inbox: &Path, on_event: &dyn Fn(&str, Value)) {
     let empty = |code| Response::empty(code).boxed();
     if !req.remote_addr().is_some_and(|a| is_local(a.ip())) {
         let _ = req.respond(empty(403));
@@ -252,14 +285,22 @@ fn handle(mut req: Request, token: &str, files: &[PathBuf], inbox: &Path, on_rec
             .with_header(header("Content-Type", "text/html; charset=utf-8"))
             .boxed(),
         (Method::Get, r) if r.starts_with("f/") => {
-            match r[2..].parse::<usize>().ok().and_then(|i| files.get(i)).and_then(|p| File::open(p).ok().map(|f| (p, f))) {
-                Some((p, f)) => Response::from_file(f)
-                    .with_header(header("Content-Type", "application/octet-stream"))
-                    .with_header(header(
-                        "Content-Disposition",
-                        &format!("attachment; filename*=UTF-8''{}", percent_encode(&file_name(p))),
-                    ))
-                    .boxed(),
+            let file = r[2..].parse::<usize>().ok().and_then(|i| files.get(i)).and_then(|p| {
+                let f = File::open(p).ok()?;
+                Some((p, f.metadata().ok()?.len(), f))
+            });
+            match file {
+                Some((p, total, file)) => {
+                    let name = file_name(p);
+                    let headers = vec![
+                        header("Content-Type", "application/octet-stream"),
+                        header("Content-Disposition", &format!("attachment; filename*=UTF-8''{}", percent_encode(&name))),
+                    ];
+                    // Not boxed: the body borrows on_event, and respond() streams it right here.
+                    let body = Progress { file, name, sent: 0, total, pct: 0, on_event };
+                    let _ = req.respond(Response::new(200.into(), headers, body, Some(total as usize), None));
+                    return;
+                }
                 None => empty(404),
             }
         }
@@ -274,7 +315,7 @@ fn handle(mut req: Request, token: &str, files: &[PathBuf], inbox: &Path, on_rec
                 });
                 match saved {
                     Ok(p) => {
-                        on_received(file_name(&p));
+                        on_event("drop-received", json!(file_name(&p)));
                         empty(201)
                     }
                     Err(_) => empty(500),
@@ -379,14 +420,17 @@ mod tests {
         });
         let got = std::sync::Mutex::new(vec![]);
         for _ in 0..5 {
-            handle(server.recv().unwrap(), "tok", &[shared.clone()], &inbox, &|n| got.lock().unwrap().push(n));
+            handle(server.recv().unwrap(), "tok", &[shared.clone()], &inbox, &|e, v| got.lock().unwrap().push(format!("{e} {v}")));
         }
         let [page, file, up, bad_token, bad_index] = client.join().unwrap();
         assert!(page.starts_with("HTTP/1.1 200") && page.contains("a b.txt"), "{page}");
         assert!(file.contains("filename*=UTF-8''a%20b.txt") && file.ends_with("hola"), "{file}");
         assert!(up.starts_with("HTTP/1.1 201"), "{up}");
         assert_eq!(fs::read_to_string(inbox.join("canción.txt")).unwrap(), "datos");
-        assert_eq!(*got.lock().unwrap(), vec!["canción.txt".to_string()]);
+        assert_eq!(
+            *got.lock().unwrap(),
+            [r#"drop-sending {"name":"a b.txt","sent":4,"total":4}"#, r#"drop-sent "a b.txt""#, r#"drop-received "canción.txt""#]
+        );
         assert!(bad_token.starts_with("HTTP/1.1 404"), "{bad_token}");
         assert!(bad_index.starts_with("HTTP/1.1 404"), "{bad_index}");
         fs::remove_dir_all(&dir).unwrap();

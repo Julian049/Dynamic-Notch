@@ -21,6 +21,9 @@ let drop = null; // { url, qr, files, inbox }
 let focus = null; // { phase: 'work'|'break'|'long_break', remaining_ms, total_ms, paused, away, cycle, cycles }
 let focusAlert = false; // a phase just ended; stays until the user has seen it
 let received = [];
+let sending = null; // { name, sent, total } while the phone downloads; the notch collapses to show it
+let sent = ''; // "Enviado · <name>" for 3 s
+let sentTimer;
 let dropError = '';
 let dragging = false;
 let dragArmed = false; // Rust saw a drag start somewhere (maybe not a file)
@@ -61,7 +64,7 @@ async function layout() {
 }
 
 function setExpanded(on) {
-  on = on || !!drop || dragging; // the QR stays open until closed
+  on = on || (!!drop && !sending && !sent) || dragging; // the QR stays open until closed or the phone downloads
   if (on === expanded) return;
   expanded = on;
   render();
@@ -320,7 +323,7 @@ function setDragging(on) {
 }
 let dragDepth = 0; // dragenter/dragleave fire for every child element crossed
 document.addEventListener('dragenter', (e) => {
-  if (!hasFiles(e)) return;
+  if (!hasFiles(e) || !cfg.drop) return;
   e.preventDefault();
   dragDepth++;
   setDragging(true);
@@ -351,6 +354,7 @@ listen('drag-armed', ({ payload }) => {
 listen('drop', ({ payload }) => {
   drop = payload || null;
   received = [];
+  sending = null;
   dropError = '';
   expanded = !!drop || hovering;
   render();
@@ -368,6 +372,22 @@ function showDropError(msg) {
   }, 5000);
 }
 listen('drop-error', ({ payload }) => showDropError(payload));
+listen('drop-sending', ({ payload }) => {
+  const first = !sending;
+  sending = payload;
+  if (first) setExpanded(hovering);
+  render();
+});
+listen('drop-sent', ({ payload }) => {
+  if (sending?.name === payload) sending = null;
+  sent = payload;
+  clearTimeout(sentTimer);
+  sentTimer = setTimeout(() => {
+    sent = '';
+    render();
+  }, 3000);
+  render();
+});
 $('drop-close').addEventListener('click', () => invoke('drop_stop'));
 
 // ---------- Modo focus (timer runs in focus.rs) ----------
@@ -473,7 +493,9 @@ function render() {
   if (dropError) text = dropError;
   else if (dragging) text = 'Suelta para compartir por wifi';
   else if (waiting) text = list.length > 1 ? sessionCount(list) : `${top.project}: esperando permiso`;
-  else if (focus) text = focusText(focus); // during focus the compact shows only the timer
+  else if (focus && !sending && !sent) text = focusText(focus); // during focus the compact shows only the timer
+  else if (sending) text = `Enviando al teléfono · ${Math.floor((sending.sent / sending.total) * 100) || 0} %`;
+  else if (sent) text = `Enviado · ${sent}`;
   else if (drop) text = 'Drop activo';
   else if (lyric && playing) text = lyric.cur;
   else if (media) text = [media.title, media.artist].filter(Boolean).join(' — ');
