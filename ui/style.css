@@ -1,0 +1,199 @@
+:root {
+  /* EAR and PAD must match ui/main.js. */
+  --ear: 10px;
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Gentle spring, ~2% overshoot; the window keeps PAD px of slack for it. */
+  --spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 15.5%, 0.938 22.5%, 1.017 29%, 1.035 33.8%, 1.032 39.6%, 1.01 52.5%, 0.998 66.1%, 1);
+  --fg: #f5f5f7;
+  --fg-dim: #8e8e93;
+  --fg-faint: #6e6e73;
+  --line: #1c1c1e;
+  --working: #ffb340;
+  --waiting: #ff6b5a;
+  --done: #32d74b;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font: 13px/1.3 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  color: var(--fg);
+  user-select: none;
+  cursor: default;
+}
+
+/* The notch hangs from the top edge: flat top, rounded bottom, concave "ears" blending into the edge. */
+.notch {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  transition: transform 0.3s var(--ease-out);
+}
+body.hidden .notch { transform: translate(-50%, calc(-100% - 4px)); }
+
+.notch::before, .notch::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: var(--ear);
+  height: var(--ear);
+}
+.notch::before {
+  right: 100%;
+  background: radial-gradient(circle at 0 100%, transparent calc(var(--ear) - 0.5px), #000 var(--ear));
+}
+.notch::after {
+  left: 100%;
+  background: radial-gradient(circle at 100% 100%, transparent calc(var(--ear) - 0.5px), #000 var(--ear));
+}
+
+.shape {
+  position: relative;
+  width: var(--w, 190px);
+  height: var(--h, 32px);
+  background: #000;
+  border-radius: 0 0 12px 12px;
+  overflow: hidden;
+  transition: width 0.34s var(--ease-out), height 0.34s var(--ease-out), border-radius 0.34s var(--ease-out),
+    box-shadow 0.3s;
+}
+.expanded .shape {
+  border-radius: 0 0 26px 26px;
+  transition-timing-function: var(--spring);
+  transition-duration: 0.5s;
+}
+.alert .shape { animation: alert 1.4s ease-in-out infinite; }
+@keyframes alert {
+  50% { box-shadow: inset 0 -2px 0 var(--waiting), 0 0 0 0 transparent; }
+}
+
+.compact, .full {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transition: opacity 0.18s;
+}
+.compact {
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+}
+.full {
+  width: 460px;
+  box-sizing: border-box;
+  padding: 14px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  opacity: 0;
+  pointer-events: none;
+}
+.expanded .compact { opacity: 0; }
+.expanded .full { opacity: 1; pointer-events: auto; transition-delay: 0.12s; }
+
+.marquee {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--fg-dim);
+  mask-image: linear-gradient(90deg, transparent, #000 6px, #000 calc(100% - 6px), transparent);
+}
+#line { display: inline-block; padding: 0 6px; }
+#line.scroll { animation: marquee var(--dur, 8s) linear infinite alternate; }
+@keyframes marquee {
+  0%, 15% { transform: none; }
+  85%, 100% { transform: translateX(var(--shift)); }
+}
+.alert #line { color: var(--waiting); font-weight: 600; }
+
+.eq { display: flex; align-items: flex-end; gap: 2px; height: 12px; width: 14px; flex: none; }
+.eq[hidden] { display: none; }
+.eq i { width: 2px; height: 3px; border-radius: 1px; background: var(--fg); opacity: 0.85; }
+.eq.playing i { animation: eq 0.8s ease-in-out infinite alternate; }
+.eq.playing i:nth-child(2) { animation-delay: -0.25s; }
+.eq.playing i:nth-child(3) { animation-delay: -0.5s; }
+.eq.playing i:nth-child(4) { animation-delay: -0.15s; }
+@keyframes eq { to { height: 12px; } }
+
+.media { display: flex; align-items: center; gap: 4px; }
+.media[hidden] { display: none; }
+.track { flex: 1; min-width: 0; }
+.title, .artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.title { font-size: 14px; font-weight: 600; }
+.artist { color: var(--fg-dim); }
+
+button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font: inherit;
+  transition: background-color 0.15s, transform 0.12s var(--ease-out);
+}
+button:hover { background: var(--line); }
+button:active { transform: scale(0.92); }
+button:focus-visible { outline: 2px solid var(--fg-dim); outline-offset: 1px; }
+button svg { width: 20px; height: 20px; fill: currentColor; }
+/* The hidden attribute does not hide SVG elements by itself. */
+svg[hidden] { display: none; }
+
+.lyrics { display: grid; gap: 2px; }
+.lyrics[hidden] { display: none; }
+.lyrics p {
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+.lyrics p.cur { color: var(--fg); font-size: 15px; font-weight: 600; }
+
+.claude { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.claude[hidden] { display: none; }
+.claude:first-child { padding-top: 0; border-top: 0; }
+.session { display: flex; align-items: center; gap: 8px; white-space: nowrap; min-width: 0; }
+.session .project { font-weight: 600; flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+.session .status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-dim); }
+.session.waiting .status { color: var(--waiting); }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: none; }
+.dot.working, .dot.waiting, .dot.done { display: block; }
+.dot.working { background: var(--working); animation: pulse 1.2s ease-in-out infinite; }
+.dot.waiting { background: var(--waiting); animation: pulse 0.7s ease-in-out infinite; }
+.dot.done { background: var(--done); }
+@keyframes pulse { 50% { opacity: 0.3; } }
+
+.drop { display: flex; gap: 16px; align-items: center; }
+.drop[hidden] { display: none; }
+.qr { flex: none; width: 148px; height: 148px; border-radius: 12px; overflow: hidden; background: #fff; }
+.qr svg { display: block; width: 100%; height: 100%; }
+.drop-info { min-width: 0; display: grid; gap: 6px; justify-items: start; }
+.drop-title { font-size: 14px; font-weight: 600; }
+.drop-files, .drop-note { color: var(--fg-dim); font-size: 12px; overflow-wrap: anywhere; }
+.text-btn {
+  width: auto;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: var(--line);
+  font-size: 12px;
+}
+.text-btn:hover { background: #2c2c2e; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition-duration: 0s !important; }
+}

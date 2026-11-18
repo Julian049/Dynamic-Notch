@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Ajustes · Dynamic Island</title>
+  <link rel="stylesheet" href="settings.css">
+  <script src="settings.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Ajustes</h1>
+
+    <section>
+      <label class="row">
+        <span class="text"><b>Iniciar con Windows</b><small>Se abre oculta al iniciar sesión.</small></span>
+        <input type="checkbox" role="switch" id="autostart">
+      </label>
+      <label class="row">
+        <span class="text"><b>Auto-ocultar</b><small>Se esconde cuando no hay nada que mostrar.</small></span>
+        <input type="checkbox" role="switch" id="autohide">
+      </label>
+      <label class="row">
+        <span class="text"><b>Ocultar tras</b><small>Segundos sin actividad.</small></span>
+        <input type="number" id="hide_secs" min="2" max="3600" step="1" inputmode="numeric">
+      </label>
+    </section>
+
+    <section>
+      <label class="row">
+        <span class="text"><b>Integración con Claude Code</b><small id="claude-note">Buscando instalaciones…</small></span>
+        <input type="checkbox" role="switch" id="claude" disabled>
+      </label>
+      <label class="row" id="sound-row">
+        <span class="text"><b>Sonido al terminar</b><small>Cuando Claude termina una respuesta.</small></span>
+        <input type="checkbox" role="switch" id="sound">
+      </label>
+    </section>
+
+    <p class="error" id="error" role="alert"></p>
+  </main>
+</body>
+</html>

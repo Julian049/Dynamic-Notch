@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Dynamic Island",
+  "version": "0.1.0",
+  "identifier": "dev.julian.dynamicisland",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "island",
+        "title": "Dynamic Island",
+        "url": "index.html",
+        "width": 244,
+        "height": 44,
+        "y": 0,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "focus": false,
+        "visible": false
+      },
+      {
+        "label": "settings",
+        "title": "Ajustes · Dynamic Island",
+        "url": "settings.html",
+        "width": 460,
+        "height": 560,
+        "center": true,
+        "resizable": false,
+        "maximizable": false,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost https://lrclib.net"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["icons/icon.ico"]
+  }
+}

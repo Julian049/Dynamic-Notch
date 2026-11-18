@@ -1,0 +1,14 @@
+# Compilados: el .exe se publica en GitHub Releases, no en el repo
+/dist/
+/src-tauri/target/
+/src-tauri/gen/schemas/
+
+# Instrucciones y herramientas locales de Claude Code (ajenas al proyecto)
+/CLAUDE.md
+/settings.json
+/.claude/
+.playwright-cli/
+
+# Sistema
+Thumbs.db
+desktop.ini

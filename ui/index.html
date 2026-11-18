@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Dynamic Island</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="lyrics.js" defer></script>
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <div class="notch" id="notch">
+    <div class="shape">
+      <div class="compact">
+        <span class="eq" id="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <div class="marquee" id="marquee"><span id="line"></span></div>
+        <span class="dot" id="dot" aria-hidden="true"></span>
+      </div>
+
+      <div class="full" id="full">
+        <!-- placeholder: crude on purpose until the Figma redesign -->
+        <div id="drag-hint" hidden style="font-size:20px;padding:16px 0;text-align:center">SUÉLTALO AQUÍ</div>
+        <div class="media" id="media">
+          <div class="track">
+            <div class="title" id="title">Nada sonando</div>
+            <div class="artist" id="artist"></div>
+          </div>
+          <button id="toggle" aria-label="Reproducir o pausar">
+            <svg viewBox="0 0 24 24" id="icon-play"><path d="M8 5v14l11-7z"/></svg>
+            <svg viewBox="0 0 24 24" id="icon-pause" hidden><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+          </button>
+          <button id="next" aria-label="Siguiente">
+            <svg viewBox="0 0 24 24"><path d="M6 6l8.5 6L6 18zM16 6h2v12h-2z"/></svg>
+          </button>
+        </div>
+
+        <div class="lyrics" id="lyrics" hidden>
+          <p id="ly-prev"></p>
+          <p id="ly-cur" class="cur"></p>
+          <p id="ly-next"></p>
+        </div>
+
+        <div class="claude" id="claude" hidden></div>
+
+        <div class="drop" id="drop" hidden>
+          <div class="qr" id="qr"></div>
+          <div class="drop-info">
+            <div class="drop-title">Escanea con el celular</div>
+            <div class="drop-files" id="drop-url" style="user-select:text"></div>
+            <div class="drop-files" id="drop-files"></div>
+            <div class="drop-note" id="drop-note"></div>
+            <button class="text-btn" id="drop-close">Cerrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
