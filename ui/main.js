@@ -524,7 +524,7 @@ function renderBatteries() {
   const pc = batteries.pc;
   if (pc) {
     const mins = notice?.kind === 'charging' && notice.minutes_to_full;
-    const sub = pc.charging ? 'Cargando' + (mins ? ` · lleno en ${fmtDuration(mins)}` : '') : 'En batería';
+    const sub = pc.charging ? 'Cargando' + (mins ? ` · llena en ${fmtDuration(mins)}` : '') : 'En batería';
     rows.push({ glyph: icon('laptop'), name: 'Este equipo', pct: pc.percent, text: `${pc.percent} %`, sub, charging: pc.charging });
   }
   for (const d of batteries.devices) rows.push({ glyph: deviceIcon(d.name, ''), name: d.name, pct: d.battery, text: `~${d.battery} %`, sub: 'Conectado' });
@@ -772,7 +772,7 @@ function noticeView(v, n) {
       v.trail = [bar('', n.level / 100), span('val num', String(n.level))];
       return;
     case 'charging':
-      Object.assign(v, { w: 320, main: 'Cargando', sub: n.minutes_to_full ? `lleno en ${fmtDuration(n.minutes_to_full)}` : '', subCls: 'cap' });
+      Object.assign(v, { w: 320, main: 'Cargando', sub: n.minutes_to_full ? `llena en ${fmtDuration(n.minutes_to_full)}` : '', subCls: 'cap' });
       v.lead = [icon('bolt', 'ic15 pos')];
       v.trail = [span('val', pct(n.percent)), battery(n.percent, 'charging')];
       return;
@@ -829,7 +829,7 @@ function compactView(list, lyric) {
     const p = Math.floor((sending.sent / sending.total) * 100) || 0;
     Object.assign(v, { w: 340, main: 'Enviando al teléfono' });
     v.lead = [icon('phone', 'share-ic')];
-    v.trail = [bar('share', p / 100), span('val pct', `${p}%`)];
+    v.trail = [bar('share', p / 100), span('val pct', `${p} %`)];
   } else if (sent) {
     Object.assign(v, { w: 320, cls: 'g8 pl12', main: 'Enviado', sub: sent, subCls: 'gap8' });
     v.lead = [img('check', 18, 18)];
