@@ -18,7 +18,7 @@ use std::{
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, DragDropEvent, Emitter, LogicalPosition, LogicalSize, Manager, WebviewWindow, WindowEvent,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use windows::Win32::{
@@ -340,23 +340,6 @@ fn main() {
                 api.prevent_close();
                 let _ = w.hide();
             }
-            ("island", WindowEvent::DragDrop(ev)) => {
-                let app = w.app_handle();
-                match ev {
-                    DragDropEvent::Enter { .. } => {
-                        wake(app);
-                        let _ = app.emit_to("island", "drag", true);
-                    }
-                    DragDropEvent::Leave => drop(app.emit_to("island", "drag", false)),
-                    DragDropEvent::Drop { paths, .. } => {
-                        let _ = app.emit_to("island", "drag", false);
-                        if let Err(e) = drop::start(app, paths.clone()) {
-                            let _ = app.emit_to("island", "drop-error", e);
-                        }
-                    }
-                    _ => {}
-                }
-            }
             _ => {}
         })
         .setup(move |app| {
@@ -384,6 +367,7 @@ fn main() {
                 }
             }
             build_tray(app)?;
+            drop::listen_native_drops(&handle)?;
             // Placeholder size until the UI loads and sizes it (ui/main.js layout()).
             if let Some(w) = island(&handle) {
                 resize(w, 244.0, 44.0)?;

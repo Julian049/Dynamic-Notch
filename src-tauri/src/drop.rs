@@ -17,9 +17,12 @@ use tiny_http::{Header, Method, Request, Response, Server};
 const PORT: u16 = 27824;
 const LIFETIME: Duration = Duration::from_secs(10 * 60);
 
+/// The open Drop session. The server itself never stops (see `ensure_server`); closing Drop drops this,
+/// which turns every request into a 404.
 pub struct Active {
-    server: Arc<Server>,
     token: String,
+    files: Arc<Vec<PathBuf>>,
+    inbox: PathBuf,
 }
 
 pub fn is_local(ip: IpAddr) -> bool {
@@ -115,7 +118,7 @@ pub fn start(app: &AppHandle, paths: Vec<PathBuf>) -> Result<(), String> {
     stop(app);
     let files: Vec<PathBuf> = paths.into_iter().filter(|p| p.is_file()).collect();
     let ip = lan_ip().ok_or("No hay conexión a una red local")?;
-    let server = Arc::new(Server::http(("0.0.0.0", PORT)).map_err(|e| format!("No se pudo abrir el puerto {PORT}: {e}"))?);
+    ensure_server(app)?;
     let token = crate::random_hex(16);
     let url = format!("http://{ip}:{PORT}/{token}/");
     let qr = qrcode::QrCode::new(url.as_bytes())
@@ -125,25 +128,16 @@ pub fn start(app: &AppHandle, paths: Vec<PathBuf>) -> Result<(), String> {
         .quiet_zone(true)
         .build();
     let inbox = app.path().download_dir().map_err(|e| e.to_string())?.join("Drop");
-    *app.state::<AppState>().drop.lock().unwrap() = Some(Active { server: server.clone(), token: token.clone() });
+    let names: Vec<String> = files.iter().map(|p| file_name(p)).collect();
+    *app.state::<AppState>().drop.lock().unwrap() =
+        Some(Active { token: token.clone(), files: Arc::new(files), inbox: inbox.clone() });
     let _ = app.emit_to("island", "drop", json!({
         "url": url,
         "qr": qr,
-        "files": files.iter().map(|p| file_name(p)).collect::<Vec<_>>(),
+        "files": names,
         "inbox": inbox.display().to_string(),
     }));
 
-    let files = Arc::new(files);
-    let (a, t) = (app.clone(), token.clone());
-    thread::spawn(move || {
-        for req in server.incoming_requests() {
-            let (a, t, files, inbox) = (a.clone(), t.clone(), files.clone(), inbox.clone());
-            // One thread per request so a long download doesn't block the page.
-            thread::spawn(move || {
-                handle(req, &t, &files, &inbox, &|name| drop(a.emit_to("island", "drop-received", name)))
-            });
-        }
-    });
     let a = app.clone();
     thread::spawn(move || {
         thread::sleep(LIFETIME);
@@ -155,9 +149,80 @@ pub fn start(app: &AppHandle, paths: Vec<PathBuf>) -> Result<(), String> {
     Ok(())
 }
 
+/// Starts Drop with the files the island page posts on a drop (ui/main.js). WebView2 handles the
+/// drag itself: wry's OLE drop target (dragDropEnabled) never received drags from Explorer here.
+pub fn listen_native_drops(app: &AppHandle) -> tauri::Result<()> {
+    use webview2_com::{
+        take_pwstr,
+        Microsoft::Web::WebView2::Win32::{ICoreWebView2File, ICoreWebView2WebMessageReceivedEventArgs2},
+        WebMessageReceivedEventHandler,
+    };
+    use windows_core::{Interface, PWSTR};
+    let Some(w) = app.get_webview_window("island") else { return Ok(()) };
+    let app = app.clone();
+    w.with_webview(move |pw| unsafe {
+        let handler = WebMessageReceivedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else { return Ok(()) };
+            let mut msg = PWSTR::null();
+            if args.TryGetWebMessageAsString(&mut msg).is_err() || take_pwstr(msg) != "island-drop" {
+                return Ok(());
+            }
+            let objs = args.cast::<ICoreWebView2WebMessageReceivedEventArgs2>()?.AdditionalObjects()?;
+            let mut n = 0;
+            objs.Count(&mut n)?;
+            let mut paths = Vec::new();
+            for i in 0..n {
+                if let Ok(f) = objs.GetValueAtIndex(i)?.cast::<ICoreWebView2File>() {
+                    let mut p = PWSTR::null();
+                    f.Path(&mut p)?;
+                    paths.push(PathBuf::from(take_pwstr(p)));
+                }
+            }
+            if let Err(e) = start(&app, paths) {
+                let _ = app.emit_to("island", "drop-error", e);
+            }
+            Ok(())
+        }));
+        let mut token = 0i64;
+        let added = pw.controller().CoreWebView2().and_then(|core| core.add_WebMessageReceived(&handler, &mut token));
+        if let Err(e) = added {
+            eprintln!("drop listener: {e}");
+        }
+    })
+}
+
+/// Binds the Drop port once and keeps it for the app's lifetime. tiny_http can't be shut down cleanly
+/// on Windows while a client is still connected (a phone's half-open attempt was enough): the port
+/// stayed taken and every later Drop failed with error 10048.
+fn ensure_server(app: &AppHandle) -> Result<(), String> {
+    static STARTED: std::sync::Mutex<bool> = std::sync::Mutex::new(false);
+    let mut started = STARTED.lock().unwrap();
+    if *started {
+        return Ok(());
+    }
+    let server = Server::http(("0.0.0.0", PORT)).map_err(|e| format!("No se pudo abrir el puerto {PORT}: {e}"))?;
+    let a = app.clone();
+    thread::spawn(move || {
+        for req in server.incoming_requests() {
+            let a = a.clone();
+            // One thread per request so a long download doesn't block the page.
+            thread::spawn(move || {
+                let session = a.state::<AppState>().drop.lock().unwrap().as_ref().map(|d| (d.token.clone(), d.files.clone(), d.inbox.clone()));
+                match session {
+                    Some((t, files, inbox)) => {
+                        handle(req, &t, &files, &inbox, &|name| drop(a.emit_to("island", "drop-received", name)))
+                    }
+                    None => drop(req.respond(Response::empty(404))),
+                }
+            });
+        }
+    });
+    *started = true;
+    Ok(())
+}
+
 pub fn stop(app: &AppHandle) {
-    if let Some(d) = app.state::<AppState>().drop.lock().unwrap().take() {
-        d.server.unblock();
+    if app.state::<AppState>().drop.lock().unwrap().take().is_some() {
         let _ = app.emit_to("island", "drop", ());
     }
 }

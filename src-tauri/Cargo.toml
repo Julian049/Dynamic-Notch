@@ -9,6 +9,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-autostart = "2"
+# Already in the tree via tauri/wry; used to receive dropped file paths from WebView2 (drop.rs).
+webview2-com = "0.39"
+windows-core = "0.62"
 serde = { version = "1", features = ["derive"] }
 # preserve_order: rewriting the user's settings.json must keep its key order.
 serde_json = { version = "1", features = ["preserve_order"] }

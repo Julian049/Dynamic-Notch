@@ -209,10 +209,39 @@ invoke('get_settings').then((s) => {
 
 // ---------- Drop ----------
 
-listen('drag', ({ payload }) => {
-  dragging = payload;
+// WebView2 handles the drag; the dropped files go to Rust with their paths (listen_native_drops in drop.rs).
+const hasFiles = (e) => e.dataTransfer?.types.includes('Files');
+function setDragging(on) {
+  if (on === dragging) return;
+  dragging = on;
   expanded = dragging || !!drop || hovering;
   render();
+}
+let dragDepth = 0; // dragenter/dragleave fire for every child element crossed
+document.addEventListener('dragenter', (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  dragDepth++;
+  setDragging(true);
+});
+document.addEventListener('dragover', (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); // without this the page refuses the drop
+  e.dataTransfer.dropEffect = 'copy';
+});
+document.addEventListener('dragleave', () => {
+  if (--dragDepth <= 0) (dragDepth = 0), setDragging(false);
+});
+document.addEventListener('drop', (e) => {
+  e.preventDefault(); // otherwise WebView2 navigates to the file
+  dragDepth = 0;
+  setDragging(false);
+  if (!e.dataTransfer.files.length) return;
+  try {
+    window.chrome.webview.postMessageWithAdditionalObjects('island-drop', e.dataTransfer.files);
+  } catch (err) {
+    showDropError(err.message);
+  }
 });
 listen('drag-armed', ({ payload }) => {
   dragArmed = payload;
@@ -229,14 +258,15 @@ listen('drop-received', ({ payload }) => {
   received.push(payload);
   render();
 });
-listen('drop-error', ({ payload }) => {
-  dropError = String(payload);
+function showDropError(msg) {
+  dropError = String(msg);
   render();
   setTimeout(() => {
     dropError = '';
     render();
   }, 5000);
-});
+}
+listen('drop-error', ({ payload }) => showDropError(payload));
 $('drop-close').addEventListener('click', () => invoke('drop_stop'));
 
 // ---------- visibility (driven by Rust, see watch_visibility in main.rs) ----------

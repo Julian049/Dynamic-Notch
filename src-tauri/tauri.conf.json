@@ -23,7 +23,8 @@
         "skipTaskbar": true,
         "resizable": false,
         "focus": false,
-        "visible": false
+        "visible": false,
+        "dragDropEnabled": false
       },
       {
         "label": "settings",
