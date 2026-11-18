@@ -182,6 +182,11 @@ svg[hidden] { display: none; }
 .focus-time { font-size: 32px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .focus progress { width: 100%; height: 4px; accent-color: var(--fg); }
 .focus-actions { display: flex; gap: 8px; }
+.batteries { display: grid; gap: 4px; padding-top: 10px; border-top: 1px solid var(--line); }
+.batteries[hidden] { display: none; }
+.battery-row { display: flex; justify-content: space-between; color: var(--fg-dim); }
+.battery-row .pct { font-variant-numeric: tabular-nums; color: var(--fg); }
+.battery-row.low .pct { color: var(--waiting); }
 .session .time { flex: none; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
 .summary { color: var(--fg); padding-left: 16px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
 .stats, .more { color: var(--fg-dim); font-size: 11px; padding-left: 16px; }

@@ -4,6 +4,7 @@ mod claude;
 mod drop;
 mod focus;
 mod media;
+mod system;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -49,6 +50,10 @@ pub struct Config {
     pub focus: bool,
     /// "Compartir archivos" (Drop).
     pub drop: bool,
+    /// Sistema: volume and brightness, PC battery, Bluetooth devices.
+    pub sys_volume: bool,
+    pub sys_battery: bool,
+    pub sys_bluetooth: bool,
     /// Minutes.
     pub focus_work: u64,
     pub focus_break: u64,
@@ -73,6 +78,9 @@ impl Default for Config {
             claude_permission: true,
             focus: false,
             drop: true,
+            sys_volume: true,
+            sys_battery: true,
+            sys_bluetooth: true,
             focus_work: 25,
             focus_break: 5,
             focus_long: 15,
@@ -266,6 +274,9 @@ fn settings_json(app: &AppHandle, targets: &[PathBuf]) -> Value {
         "claude_permission": c.claude_permission,
         "focus": c.focus,
         "drop": c.drop,
+        "sys_volume": c.sys_volume,
+        "sys_battery": c.sys_battery,
+        "sys_bluetooth": c.sys_bluetooth,
         "focus_work": c.focus_work,
         "focus_break": c.focus_break,
         "focus_long": c.focus_long,
@@ -302,6 +313,9 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
         ("claude_permission", &mut cfg.claude_permission),
         ("focus", &mut cfg.focus),
         ("drop", &mut cfg.drop),
+        ("sys_volume", &mut cfg.sys_volume),
+        ("sys_battery", &mut cfg.sys_battery),
+        ("sys_bluetooth", &mut cfg.sys_bluetooth),
     ] {
         if let Some(b) = patch[key].as_bool() {
             *field = b;
@@ -475,6 +489,8 @@ fn main() {
             thread::spawn(move || media::watch(h));
             let h = handle.clone();
             thread::spawn(move || focus::run(h));
+            let h = handle.clone();
+            thread::spawn(move || system::run(h));
             thread::spawn(move || watch_visibility(handle));
             Ok(())
         })

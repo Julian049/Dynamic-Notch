@@ -2,7 +2,7 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const $ = (id) => document.getElementById(id);
 
-const SWITCHES = ['autostart', 'autohide', 'claude', 'sound', 'music', 'lyrics', 'art_color', 'eq', 'claude_working', 'claude_done', 'claude_permission', 'focus', 'drop'];
+const SWITCHES = ['autostart', 'autohide', 'claude', 'sound', 'music', 'lyrics', 'art_color', 'eq', 'claude_working', 'claude_done', 'claude_permission', 'focus', 'drop', 'sys_volume', 'sys_battery', 'sys_bluetooth'];
 const MINUTES = ['focus_work', 'focus_break', 'focus_long'];
 let sessions = [];
 

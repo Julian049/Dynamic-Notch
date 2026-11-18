@@ -12,6 +12,8 @@ tauri-plugin-autostart = "2"
 # Already in the tree via tauri/wry; used to receive dropped file paths from WebView2 (drop.rs).
 webview2-com = "0.39"
 windows-core = "0.62"
+# Same major as `windows` 0.61, whose WinRT APIs take its IIterable.
+windows-collections = "0.2"
 serde = { version = "1", features = ["derive"] }
 # preserve_order: rewriting the user's settings.json must keep its key order.
 serde_json = { version = "1", features = ["preserve_order"] }
@@ -27,6 +29,18 @@ windows = { version = "0.61", features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_SystemInformation",
+    "Win32_System_Com",
+    "Win32_System_Rpc",
+    "Win32_System_Variant",
+    "Win32_System_Ole",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Wmi",
+    "Win32_System_Power",
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Devices_Enumeration",
+    "Devices_Power",
+    "Foundation_Collections",
 ] }
 
 [profile.release]

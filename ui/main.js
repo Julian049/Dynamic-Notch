@@ -19,6 +19,9 @@ let art = { rev: -1, url: null, color: null }; // cover as a blob: URL and its d
 const sessions = new Map();
 let drop = null; // { url, qr, files, inbox }
 let focus = null; // { phase: 'work'|'break'|'long_break', remaining_ms, total_ms, paused, away, cycle, cycles }
+let notice = null; // transient system notice: { kind, ... } from system.rs, gone after NOTICE_MS
+let noticeTimer;
+let batteries = { pc: null, devices: [] };
 let focusAlert = false; // a phase just ended; stays until the user has seen it
 let received = [];
 let sending = null; // { name, sent, total } while the phone downloads; the notch collapses to show it
@@ -36,7 +39,7 @@ let shrinkTimer;
 // ---------- sizing ----------
 
 function hasContent() {
-  return !!(media || claudeSessions().length || drop || dragging || focus);
+  return !!(media || claudeSessions().length || drop || dragging || focus || notice);
 }
 
 function resizeWindow(w, h) {
@@ -419,6 +422,62 @@ function renderFocus() {
   $('focus-pause').textContent = focus.paused ? 'Reanudar' : 'Pausar';
 }
 
+// ---------- Sistema (system.rs) ----------
+
+// Volume and brightness hide 1.5 s after the last change, like the Figma; the rest stay 3 s.
+const NOTICE_MS = { volume: 1500, brightness: 1500 };
+const BATTERY_KINDS = ['charging', 'battery_low', 'bt_connected', 'bt_low'];
+listen('system', ({ payload }) => {
+  notice = payload;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => {
+    notice = null;
+    render();
+  }, NOTICE_MS[payload.kind] || 3000);
+  render();
+});
+listen('batteries', ({ payload }) => {
+  batteries = payload;
+  render();
+});
+
+function noticeText(n) {
+  switch (n.kind) {
+    case 'volume':
+      return n.muted ? 'Silenciado' : `Volumen · ${n.level} %`;
+    case 'brightness':
+      return `Brillo · ${n.level} %`;
+    case 'charging':
+      return `Cargando · ${n.percent} %` + (n.minutes_to_full ? ` · llena en ${fmtDuration(n.minutes_to_full)}` : '');
+    case 'battery_low':
+      return `Batería baja · ${n.percent} %`;
+    case 'bt_connected':
+      return `${n.name} conectado` + (n.battery != null ? ` · ~${n.battery} %` : '');
+    case 'bt_low':
+      return `${n.name}: batería baja · ${n.battery} %`;
+  }
+  return '';
+}
+const fmtDuration = (min) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${min} min`);
+
+// Placeholder list until the Figma redesign: shown on hover while a battery notice is up.
+function renderBatteries() {
+  const show = !!notice && BATTERY_KINDS.includes(notice.kind) && !dragging;
+  $('batteries').hidden = !show;
+  if (!show) return;
+  const rows = [];
+  if (batteries.pc) rows.push(['Este equipo', batteries.pc.percent, batteries.pc.charging ? 'Cargando' : '']);
+  for (const d of batteries.devices) rows.push([d.name, d.battery, '']);
+  $('batteries').replaceChildren(
+    el('b', '', 'Baterías'),
+    ...rows.map(([name, pct, note]) => {
+      const row = el('div', `battery-row${pct <= 20 ? ' low' : ''}`);
+      row.append(el('span', 'name', name + (note ? ` · ${note}` : '')), el('span', 'pct', `${pct} %`));
+      return row;
+    }),
+  );
+}
+
 // ---------- visibility (driven by Rust, see watch_visibility in main.rs) ----------
 
 listen('vis', ({ payload: visible }) => {
@@ -493,6 +552,7 @@ function render() {
   if (dropError) text = dropError;
   else if (dragging) text = 'Suelta para compartir por wifi';
   else if (waiting) text = list.length > 1 ? sessionCount(list) : `${top.project}: esperando permiso`;
+  else if (notice) text = noticeText(notice);
   else if (focus && !sending && !sent) text = focusText(focus); // during focus the compact shows only the timer
   else if (sending) text = `Enviando al teléfono · ${Math.floor((sending.sent / sending.total) * 100) || 0} %`;
   else if (sent) text = `Enviado · ${sent}`;
@@ -512,7 +572,8 @@ function render() {
   $('notch').style.setProperty('--notch-bg', tint ? `rgb(${art.color.map((c) => Math.round(c * 0.35)).join(' ')})` : '#000');
   $('eq').classList.toggle('playing', playing);
   $('dot').className = `dot ${top?.state || ''}`;
-  $('notch').classList.toggle('alert', waiting || focusAlert);
+  const lowNotice = notice && (notice.kind === 'battery_low' || notice.kind === 'bt_low');
+  $('notch').classList.toggle('alert', waiting || focusAlert || lowNotice);
 
   // Expanded.
   $('drag-hint').hidden = !dragging;
@@ -532,6 +593,7 @@ function render() {
   }
   renderSessions(dragging ? [] : list);
   renderFocus();
+  renderBatteries();
   if (dragging) $('lyrics').hidden = true;
   $('drop').hidden = !drop || dragging;
   if (drop) {
