@@ -123,6 +123,67 @@ fn icon(n: &UserNotification) -> Option<Vec<u8>> {
     crate::media::read_stream(&logo.cast::<IRandomAccessStreamReference>().ok()?).ok().flatten()
 }
 
+/// Src of the `appLogoOverride` image in a toast payload; only local `file:///` paths.
+fn logo_src(payload: &str) -> Option<String> {
+    let tag = payload.split("<image").skip(1).map(|t| t.split('>').next().unwrap_or("")).find(|t| t.contains(r#"placement="appLogoOverride""#))?;
+    let src = tag.split(r#"src=""#).nth(1)?.split('"').next()?;
+    Some(src.strip_prefix("file:///")?.replace("&amp;", "&"))
+}
+
+/// Phone Link puts the phone app's name first: (app, title, body).
+fn phone_texts(t: Vec<String>) -> (String, String, String) {
+    let mut t = t.into_iter();
+    (t.next().unwrap_or_default(), t.next().unwrap_or_default(), t.collect::<Vec<_>>().join(" "))
+}
+
+/// Deletes the copied notification database (it holds every notification) however we leave.
+struct Wipe(std::path::PathBuf);
+impl Drop for Wipe {
+    fn drop(&mut self) {
+        for f in ["wpndatabase.db", "wpndatabase.db-wal", "wpndatabase.db-shm"] {
+            let _ = std::fs::remove_file(self.0.join(f));
+        }
+    }
+}
+
+/// The real AUMID and logo bytes of a notification, from Windows' own database (the listener API
+/// gives Phone Link's AUMID for every phone app and no images). Reads a copy: the service keeps
+/// the original open in WAL mode.
+fn toast_source(id: u32) -> Option<(String, Option<Vec<u8>>)> {
+    let from = std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join(r"Microsoft\Windows\Notifications");
+    let dir = std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join(r"dev.julian.dynamicisland\wpn");
+    std::fs::create_dir_all(&dir).ok()?;
+    let _wipe = Wipe(dir.clone());
+    for (i, f) in ["wpndatabase.db", "wpndatabase.db-wal", "wpndatabase.db-shm"].iter().enumerate() {
+        // The -wal and -shm may not exist; the main file must.
+        if std::fs::copy(from.join(f), dir.join(f)).is_err() && i == 0 {
+            return None;
+        }
+    }
+    let db = rusqlite::Connection::open_with_flags(dir.join("wpndatabase.db"), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let (aumid, payload): (String, Vec<u8>) = db
+        .query_row(
+            "SELECT h.PrimaryId, n.Payload FROM Notification n JOIN NotificationHandler h ON n.HandlerId = h.RecordId WHERE n.Id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get::<_, rusqlite::types::Value>(1).map(|v| match v {
+                rusqlite::types::Value::Blob(b) => b,
+                rusqlite::types::Value::Text(t) => t.into_bytes(),
+                _ => vec![],
+            })?)),
+        )
+        .ok()?;
+    let logo = logo_src(&String::from_utf8_lossy(&payload))
+        .and_then(|p| std::fs::File::open(p).ok())
+        .and_then(|f| {
+            use std::io::Read;
+            let mut buf = vec![];
+            // 16 MB, the same limit as media::read_stream; a bigger file is dropped.
+            f.take((16 << 20) + 1).read_to_end(&mut buf).ok()?;
+            (!buf.is_empty() && buf.len() <= 16 << 20).then_some(buf)
+        });
+    Some((aumid, logo))
+}
+
 pub fn access_status() -> &'static str {
     match UserNotificationListener::Current().and_then(|l| l.GetAccessStatus()) {
         Ok(UserNotificationListenerAccessStatus::Allowed) => "allowed",
@@ -167,8 +228,19 @@ pub fn run(app: AppHandle) {
         let more = fresh.len() - 1;
         let (_, n, t) = fresh.pop().unwrap();
         let Ok(info) = n.AppInfo() else { continue };
-        let aumid = info.AppUserModelId().map(|a| a.to_string()).unwrap_or_default();
-        let name = info.DisplayInfo().and_then(|d| d.DisplayName()).map(|d| d.to_string()).unwrap_or_default();
+        let mut aumid = info.AppUserModelId().map(|a| a.to_string()).unwrap_or_default();
+        let mut name = info.DisplayInfo().and_then(|d| d.DisplayName()).map(|d| d.to_string()).unwrap_or_default();
+        let (real, logo) = toast_source(n.Id().unwrap_or(0)).unzip();
+        if let Some(real) = real {
+            aumid = real;
+        }
+        let logo = logo.flatten();
+        let (mut title, mut body) = (None, None);
+        if aumid.contains("!YourPhoneNotifications_") {
+            let (app, ti, bo) = phone_texts(t.clone());
+            name = app;
+            (title, body) = (Some(ti), Some(bo));
+        }
 
         let cfg = state.cfg.lock().unwrap().clone();
         if !cfg.notif_apps.contains_key(&aumid) {
@@ -186,7 +258,7 @@ pub fn run(app: AppHandle) {
         }
         let icons = app.state::<Icons>();
         if !icons.0.lock().unwrap().contains_key(&aumid) {
-            if let Some(bytes) = icon(&n) {
+            if let Some(bytes) = logo.or_else(|| icon(&n)) {
                 icons.0.lock().unwrap().insert(aumid.clone(), bytes);
             }
         }
@@ -195,8 +267,8 @@ pub fn run(app: AppHandle) {
         let _ = app.emit_to("island", "notification", json!({
             "aumid": aumid,
             "app": name,
-            "title": t.next().unwrap_or_default(),
-            "body": t.collect::<Vec<_>>().join(" "),
+            "title": title.unwrap_or_else(|| t.next().unwrap_or_default()),
+            "body": body.unwrap_or_else(|| t.collect::<Vec<_>>().join(" ")),
             "more": more,
         }));
     }
@@ -205,6 +277,23 @@ pub fn run(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TOAST: &str = r#"<toast launch="x" activationType="protocol"><visual><binding template="ToastGeneric"><image id="1" src="file:///C:\Users\Julian\AppData\app_icon.png" placement="appLogoOverride" hint-crop="square"/><text id="1">WhatsApp</text></binding></visual></toast>"#;
+
+    #[test]
+    fn logo_src_only_takes_local_app_logo_override() {
+        assert_eq!(logo_src(TOAST).as_deref(), Some(r"C:\Users\Julian\AppData\app_icon.png"));
+        assert_eq!(logo_src(r#"<image placement="appLogoOverride" src="file:///C:\a&amp;b.png"/>"#).as_deref(), Some(r"C:\a&b.png"));
+        assert_eq!(logo_src(r#"<image placement="appLogoOverride" src="ms-appx:///a.png"/>"#), None);
+        assert_eq!(logo_src(r#"<image placement="hero" src="file:///C:\a.png"/>"#), None);
+        assert_eq!(logo_src("<toast><text>x</text></toast>"), None);
+    }
+
+    #[test]
+    fn phone_texts_splits_app_title_body() {
+        let t = ["WhatsApp", "+57 300", "hola", "qué tal"].map(String::from).to_vec();
+        assert_eq!(phone_texts(t), ("WhatsApp".into(), "+57 300".into(), "hola qué tal".into()));
+    }
 
     #[test]
     fn silence_then_restore_puts_back_exactly_what_was_there() {
