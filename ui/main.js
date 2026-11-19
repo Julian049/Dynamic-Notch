@@ -44,7 +44,7 @@ const SIZE_EMPTY = [190, 30]; // Figma "None · Idle"
 const COMPACT_H = { classic: 34, win11: 40 };
 let compactW = 330;
 const WIDTH_EXPANDED = 460; // expanded width of the views without a Figma width (Drop, notification)
-const VIEW_W = { music: 500, claude: 420, focus: 400, batteries: 380, drag: 380, drop: 380, notif: 420, pending: 420 }; // Figma "Size=Expanded" bodies
+const VIEW_W = { alert: 324, music: 500, claude: 420, focus: 400, batteries: 380, drag: 380, drop: 380, notif: 420, pending: 420 }; // Figma "Size=Expanded" bodies
 const MAX_W = Math.max(WIDTH_EXPANDED, ...Object.values(VIEW_W)); // widest compact (music + Claude + bell) or expanded view
 const ANIM_MS = 620; // longest .shape transition in style.css, plus the 0.08 s it waits on closing (.closing)
 
@@ -77,6 +77,8 @@ let keep = false;
 let winSize = [0, 0];
 let shrinkTimer;
 let shownView = null; // expanded view on screen (pickView); kept while collapsing so the fade-out shows it
+let alert = null; // { kind: 'done'|'permission', phase: 'alert'|'msg' } while Claude's alert opens the notch by itself
+let alertT1, alertT2;
 let viewMode = null; // mode chosen with a chip until the notch collapses
 
 // ---------- sizing ----------
@@ -153,6 +155,7 @@ document.documentElement.addEventListener('mouseleave', () => {
   clearTimeout(hoverTimer);
   hovering = false;
   focusAlert = false;
+  alert = null;
   if (expanded) (pending = []), play('cerrar'); // the user had them on screen
   forgetSeenSessions();
   setExpanded(false);
@@ -338,7 +341,7 @@ listen('claude', ({ payload: p }) => {
   const turn =
     p.hook_event_name === 'UserPromptSubmit' || !prev
       ? { started: Date.now(), files: [], added: 0, removed: 0 }
-      : { started: prev.started, files: prev.files, added: prev.added, removed: prev.removed };
+      : { started: prev.started, files: prev.files, added: prev.added, removed: prev.removed, cmd: prev.cmd };
   let s;
   switch (p.hook_event_name) {
     case 'UserPromptSubmit':
@@ -356,6 +359,7 @@ listen('claude', ({ payload: p }) => {
     }
     case 'PreToolUse':
       s = { state: 'working', text: toolText(p) };
+      turn.cmd = p.tool_input?.command || ''; // what a permission prompt would ask to run
       break;
     case 'Notification': {
       const permission =
@@ -380,14 +384,47 @@ listen('claude', ({ payload: p }) => {
   render();
   if (s.state === 'waiting' && prev?.state !== 'waiting' && cfg.claude_permission) {
     play('claude-permiso');
-    // A knock: two taps (sound: three, at 0, 130 and 260 ms). Not while the notch is still waking up.
-    setTimeout(() => !document.body.classList.contains('hidden') && fx($('notch'), [0, 3, 0].map((y) => ({ transform: `translate(-50%, ${y}px)` })), 200, { iterations: 2 }), 120);
+    startAlert('permission');
   }
-  if (s.state === 'done' && prev?.state !== 'done' && cfg.sound && cfg.claude_done) {
-    play('claude-termino');
-    fx($('claude-avatar'), POP, 300, { easing: SPRING });
+  if (s.state === 'done' && prev?.state !== 'done' && cfg.claude_done) {
+    if (cfg.sound) play('claude-termino');
+    if (focus?.phase !== 'work') startAlert('done'); // during focus the island stays quiet: only "Listo" in the compact
   }
 });
+
+// Figma "Claude · Done / Permission": the notch opens by itself with the alert, then settles. Done: after 1.5 s the
+// alert becomes the last message, at 6 s it folds into the passive "Listo". Permission: at 2.5 s it folds into
+// the passive "Esperando permiso" with a red glow. With the mouse already over the notch it goes straight to the hover view.
+function startAlert(kind) {
+  clearTimeout(alertT1);
+  clearTimeout(alertT2);
+  alert = null;
+  if (hovering) return;
+  alert = { kind, phase: 'alert' };
+  setExpanded(true);
+  render();
+  const hero = $('alert-hero');
+  if (kind === 'done') {
+    fx(hero, [{ transform: 'translateY(0)' }, { transform: 'translateY(-4px)' }, { transform: 'none' }], 400, { easing: SPRING });
+    fx($('alert-sparks'), [{ opacity: 0 }, { opacity: 1 }, { opacity: 0 }], 400);
+    fx($('alert-mark'), [{ transform: 'scale(0.6)', opacity: 0 }, { transform: 'none', opacity: 1 }], 300, { easing: SPRING, fill: 'backwards' });
+    alertT1 = setTimeout(() => {
+      if (!alert) return;
+      alert.phase = 'msg';
+      render();
+      fx($('claude'), [{ opacity: 0 }, { opacity: 1 }], 160);
+    }, 1500);
+  } else {
+    // A sideways shake (±3 px) and a red flash that settles at the passive glow.
+    setTimeout(() => !document.body.classList.contains('hidden') && fx($('notch'), [0, -3, 3, -3, 3, 0].map((x) => ({ transform: `translate(calc(-50% + ${x}px), 0)` })), 350), 120);
+    fx($('notch').firstElementChild, [{ boxShadow: '0 3px 12px rgb(255 69 58 / 0)' }, { boxShadow: '0 3px 16px rgb(255 69 58 / 1)' }, { boxShadow: '0 3px 12px rgb(255 69 58 / 0.6)' }], 600);
+  }
+  alertT2 = setTimeout(() => {
+    alert = null;
+    if (!hovering) setExpanded(false);
+    render();
+  }, kind === 'done' ? 6000 : 2500);
+}
 
 function applyLook() {
   document.body.classList.toggle('win11', cfg.style === 'win11');
@@ -752,6 +789,19 @@ function renderClaude(list) {
   body.replaceChildren(...rows);
 }
 
+function renderAlert(list) {
+  const perm = alert.kind === 'permission';
+  const s = perm ? list[0] : list.find((x) => x.state === 'done');
+  if (!s) return;
+  $('alert-mark').className = `mark${perm ? '' : ' ok'}`;
+  $('alert-mark').textContent = perm ? '!' : '✓';
+  $('alert-sparks').hidden = perm;
+  $('alert-title').textContent = perm ? 'Necesita tu permiso' : 'Tarea terminada';
+  $('alert-sub').textContent = `${s.project} · ${perm ? `esperando ${fmtTime(Date.now() - s.t)}` : fmtLong(s.duration)}`;
+  $('alert-cmd').hidden = !(perm && s.cmd);
+  $('alert-cmd').textContent = perm ? `Quiere ejecutar ${s.cmd}` : '';
+}
+
 // ---------- Notifications and Drop (expanded) ----------
 
 // App logo (only packaged apps have one), else a coloured tile with the app's initial.
@@ -824,7 +874,7 @@ function renderDropLeft() {
 
 // ---------- expanded view ----------
 
-const VIEW_EL = { music: 'media', claude: 'claude', focus: 'focus', batteries: 'batteries', notif: 'notif', pending: 'pending', drop: 'drop' };
+const VIEW_EL = { alert: 'alert', music: 'media', claude: 'claude', focus: 'focus', batteries: 'batteries', notif: 'notif', pending: 'pending', drop: 'drop' };
 const MODES = ['music', 'claude', 'focus', 'pending'];
 // The modes a chip can switch to. Focus is always there when enabled: its view starts a session.
 const modes = (list) => MODES.filter((m) => (m === 'music' ? !!media : m === 'claude' ? list.length > 0 : m === 'pending' ? pending.length > 0 : !!focus || !!cfg.focus));
@@ -834,9 +884,12 @@ function pickView(list) {
   if (dragging) return 'drag';
   if (drop) return 'drop';
   if (modes(list).includes(viewMode)) return viewMode;
-  if (list[0]?.state === 'waiting') return 'claude';
+  const waiting = list[0]?.state === 'waiting';
+  if (waiting && alert?.kind === 'permission' && alert.phase === 'alert') return 'alert';
+  if (waiting) return 'claude';
   if (notice?.kind === 'notification') return 'notif';
   if (BATTERY_KINDS.includes(notice?.kind)) return 'batteries';
+  if (alert?.kind === 'done' && alert.phase === 'alert' && list.some((s) => s.state === 'done')) return 'alert';
   if (pending.length) return 'pending';
   if (list.some((s) => s.state === 'done') && !focus) return 'claude';
   if (focus) return 'focus';
@@ -969,11 +1022,24 @@ function claudeView(v, list) {
     if (waitingCount) v.trail.push(span('cap attn', `${waitingCount} ${waitingCount === 1 ? 'espera' : 'esperan'}`));
     return;
   }
-  const waiting = top.state === 'waiting';
-  const mainCls = waiting ? 'attn' : top.state === 'working' ? 'shine' : '';
-  Object.assign(v, { w: 330, cls: 'pl12', main: waiting ? 'Esperando permiso' : top.text, mainCls });
-  v.lead = [img('claude', 22, 16)];
-  v.trail = [span('cap', top.project), span('val', fmtTime(elapsedOf(top)))];
+  const mascot = (mark) => {
+    const m = el('span', 'masc');
+    m.append(img('claude', 22, 16), ...(mark ? [span(`bang${mark === '✓' ? ' ok' : ''}`, mark)] : []));
+    return m;
+  };
+  if (top.state === 'waiting') {
+    Object.assign(v, { w: 406, cls: 'pl12', main: 'Esperando permiso' });
+    v.lead = [mascot('!')];
+    v.trail = [span('cap', top.project), span('val neg', fmtTime(Date.now() - top.t))];
+  } else if (top.state === 'done') {
+    Object.assign(v, { w: 346, cls: 'pl12', main: 'Listo' });
+    v.lead = [mascot('✓')];
+    v.trail = [span('cap', top.project), span('val', top.duration < 60000 ? `${Math.round(top.duration / 1000)} s` : `${Math.round(top.duration / 60000)} min`)];
+  } else {
+    Object.assign(v, { w: 330, cls: 'pl12', main: top.text, mainCls: 'shine' });
+    v.lead = [img('claude', 22, 16)];
+    v.trail = [span('cap', top.project), span('val', fmtTime(elapsedOf(top)))];
+  }
 }
 
 function noticeView(v, n) {
@@ -1118,7 +1184,8 @@ function render() {
   $('notch').style.setProperty('--accent-music', tint ? `rgb(${art.color.map((c) => Math.round(128 + c / 2)).join(' ')})` : '#ff9a6b');
   $('eq').classList.toggle('playing', playing);
   const lowNotice = notice && (notice.kind === 'battery_low' || notice.kind === 'bt_low');
-  $('notch').classList.toggle('alert', waiting || focusAlert || lowNotice);
+  $('notch').classList.toggle('alert', focusAlert || lowNotice);
+  $('notch').classList.toggle('perm', waiting);
 
   // Expanded: one view at a time.
   if (expanded) shownView = pickView(list);
@@ -1127,6 +1194,7 @@ function render() {
   $('drag-hint').hidden = shownView !== 'drag';
   if (shownView === 'music') renderMusic(lyric);
   else if (shownView === 'claude') renderClaude(list);
+  else if (shownView === 'alert') renderAlert(list);
   else if (shownView === 'focus') renderFocus();
   else if (shownView === 'batteries') renderBatteries();
   renderChips(shownView, list);
