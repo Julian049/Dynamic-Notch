@@ -177,6 +177,7 @@ body.blink .alert .shape { box-shadow: inset 0 -2px 0 var(--attention); }
 .expanded .full { opacity: 1; pointer-events: auto; transition-delay: 0.12s; }
 
 .marquee {
+  position: relative;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -197,6 +198,10 @@ body.blink .alert .shape { box-shadow: inset 0 -2px 0 var(--attention); }
 .marquee[hidden] { display: none; }
 /* Out and back once, not forever: a looping animation is expensive here (see the `blink` comment). */
 #line.scroll { animation: marquee var(--dur, 8s) linear 2 alternate; }
+/* A lyric line: one pass, starting after 0.6 s, lasting until 85 % of the line. */
+#line.scroll.once { animation: marquee-once var(--dur) linear 0.6s 1 both; }
+@keyframes marquee-once { to { transform: translateX(var(--shift)); } }
+#line-main.inst { color: var(--text-3); }
 @keyframes marquee {
   0%, 15% { transform: none; }
   85%, 100% { transform: translateX(var(--shift)); }
@@ -288,7 +293,11 @@ body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { 
 .media .vhead { align-items: flex-start; gap: 8px; }
 .lyrics { display: flex; flex-direction: column; gap: 4px; }
 .lyrics p { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; line-height: 18px; letter-spacing: -0.078px; color: var(--text-3); }
-.lyrics p.cur { font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -0.425px; color: var(--text-1); }
+.lyrics { transition: opacity 0.2s; }
+.lyrics.paused { opacity: 0.6; }
+.lyrics.inst p.cur { color: var(--text-3); }
+.lyrics p.cur span { display: inline-block; }
+.lyrics p.cur { text-overflow: clip; font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -0.425px; color: var(--text-1); }
 .progress { display: flex; align-items: center; gap: 10px; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.066px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .progress .track { height: 4px; border-radius: 2px; }
 .controls { display: flex; justify-content: center; align-items: center; gap: 40px; }

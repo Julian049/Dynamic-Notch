@@ -189,7 +189,10 @@ function currentLyric() {
   if (!cfg.lyrics || !lyrics.lines) return null;
   const i = lineAt(lyrics.lines, positionNow());
   const at = (k) => (k < 0 ? '' : lyrics.lines[k]?.text || (k < lyrics.lines.length ? '♪' : ''));
-  return { i, prev: at(i - 1), cur: i < 0 ? '♪' : at(i), next: at(i + 1) };
+  // dur: how long the line lasts (lrclib only times whole lines); jump: not the next line (seek, new song) → no sliding.
+  const dur = i >= 0 && lyrics.lines[i + 1] ? lyrics.lines[i + 1].t - lyrics.lines[i].t : 4000;
+  const jump = lastLyricIndex !== -2 && i !== lastLyricIndex && i !== lastLyricIndex + 1;
+  return { i, dur, jump, prev: at(i - 1), cur: i < 0 ? '♪' : at(i), next: at(i + 1) };
 }
 
 // Rust bumps art_rev when the cover changes (or arrives late); the bytes come from media_art.
@@ -238,6 +241,7 @@ function onMedia(payload) {
   const changed = payload?.title !== media?.title || payload?.artist !== media?.artist;
   media = cfg.music && payload && payload.title ? payload : null;
   if (changed) {
+    lastLyricIndex = -2;
     if (media) loadLyrics(media);
     else lyrics = { key: '', lines: null };
   }
@@ -673,18 +677,36 @@ setInterval(() => {
   for (const bar of $('eq').children) bar.style.transform = live ? `scaleY(${(0.25 + Math.random() * 0.75).toFixed(2)})` : '';
 }, 333);
 
-function setMarquee(main, sub) {
+// Long lines scroll once, at the pace of the lyric line (no loop, no way back); other texts keep the slow out-and-back.
+function setMarquee(main, sub, lyric) {
   const line = $('line');
   if ($('line-main').textContent === main && $('line-sub').textContent === sub) return;
-  if ($('line-main').textContent && main && !document.body.classList.contains('hidden')) fx($('marquee'), [{ opacity: 0, transform: 'translateY(40%)' }, { opacity: 1, transform: 'none' }], 180);
+  const old = $('line-main').textContent && main && !document.body.classList.contains('hidden');
+  if (old && !still.matches) {
+    // The old line rises and fades while the new one comes up from below (a jump only fades).
+    const ghost = line.cloneNode(true);
+    ghost.removeAttribute('id');
+    ghost.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
+    ghost.classList.remove('scroll', 'once');
+    ghost.style.cssText = 'position:absolute;left:0;top:0';
+    $('marquee').append(ghost);
+    const slide = !lyric?.jump;
+    fx(ghost, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: slide ? 'translateY(-40%)' : 'none' }], slide ? 260 : 150).finished.then(() => ghost.remove(), () => ghost.remove());
+    fx(line, [{ opacity: 0, transform: slide ? 'translateY(40%)' : 'none' }, { opacity: 1, transform: 'none' }], slide ? 260 : 150);
+  }
   $('line-main').textContent = main;
   $('line-sub').textContent = sub;
-  line.classList.remove('scroll');
+  line.classList.remove('scroll', 'once');
   const over = line.scrollWidth - $('marquee').clientWidth;
   if (over > 0) {
     line.style.setProperty('--shift', `${-over}px`);
-    line.style.setProperty('--dur', `${over / 30 + 3}s`);
-    line.classList.add('scroll');
+    if (lyric) {
+      line.style.setProperty('--dur', `${Math.max(1, lyric.dur * 0.85 - 600) / 1000}s`);
+      line.classList.add('scroll', 'once');
+    } else {
+      line.style.setProperty('--dur', `${over / 30 + 3}s`);
+      line.classList.add('scroll');
+    }
   }
 }
 
@@ -865,12 +887,29 @@ function renderMusic(lyric) {
   $('media').style.setProperty('--art-shadow', art.color ? `rgb(${art.color.join(' ')} / 0.45)` : 'transparent');
   renderProgress();
   $('lyrics').hidden = !lyric;
-  if (lyric) {
-    $('ly-prev').textContent = lyric.prev;
-    if ($('ly-cur').textContent !== lyric.cur) fx($('ly-cur'), [{ opacity: 0.5, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], 250);
-    $('ly-cur').textContent = lyric.cur;
-    $('ly-next').textContent = lyric.next;
-  }
+  $('lyrics').classList.toggle('paused', !media?.playing);
+  if (lyric) renderLyrics(lyric);
+}
+
+// Expanded lyric: the three lines slide up together; the old current shrinks as the new one grows (transform, not
+// font-size). A long current line scrolls once, from 0.6 s to 85 % of its duration.
+function renderLyrics(l) {
+  const cur = $('ly-cur');
+  const changed = cur.dataset.i !== String(l.i);
+  cur.dataset.i = String(l.i);
+  $('ly-prev').textContent = l.prev;
+  $('ly-next').textContent = l.next;
+  $('lyrics').classList.toggle('inst', l.cur === '♪');
+  if (!changed) return;
+  cur.replaceChildren(el('span', '', l.cur));
+  if (l.jump) return void fx($('lyrics'), [{ opacity: 0 }, { opacity: 1 }], 150);
+  const OUT = 'left center';
+  fx($('lyrics'), [{ transform: 'translateY(26px)' }, { transform: 'none' }], 350);
+  fx(cur, [{ transform: 'scale(0.765)', transformOrigin: OUT }, { transform: 'none', transformOrigin: OUT }], 350);
+  fx($('ly-prev'), [{ transform: 'scale(1.308)', transformOrigin: OUT }, { transform: 'none', transformOrigin: OUT }], 350);
+  const text = cur.firstElementChild;
+  const over = text.offsetWidth - cur.clientWidth;
+  if (over > 0) fx(text, [{ transform: 'none' }, { transform: `translateX(${-over}px)` }], Math.max(1000, l.dur * 0.85 - 600), { delay: 600, easing: 'linear', fill: 'forwards' });
 }
 
 // ---------- compact line (Figma "Size=Compact" variants) ----------
@@ -1024,7 +1063,7 @@ function compactView(list, lyric) {
   else if (media) {
     // Music, or "Music + Claude": the lyric on the left, Claude on the right.
     Object.assign(v, { w: 380, cls: art.url ? 'pl5' : '', eq: !!cfg.eq });
-    if (lyric && media.playing) v.main = lyric.cur;
+    if (lyric && media.playing) Object.assign(v, { main: lyric.cur, lyric, mainCls: lyric.cur === '♪' ? 'inst' : '' });
     else Object.assign(v, { main: media.title, sub: media.artist ? ` ${media.artist}` : '' });
     if (art.url) {
       if (coverImg.src !== art.url) (coverImg.src = art.url), fx(coverImg, [{ opacity: 0, transform: 'scale(0.85)' }, { opacity: 1, transform: 'none' }], 300);
@@ -1095,7 +1134,7 @@ function render() {
   else if (shownView === 'pending' && expanded) renderPending();
   if (drop) renderDrop();
 
-  layout().then(() => setMarquee(v.main, v.sub));
+  layout().then(() => setMarquee(v.main, v.sub, v.lyric));
   broadcastSessions();
 
   // Rust keeps the island visible while something is live and wakes it when that starts.

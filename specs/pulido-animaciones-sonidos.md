@@ -116,3 +116,35 @@ Archivos aprobados en `sounds/` (los genera `sounds/gen.py`, sin archivos de ter
 - Por CDP (CLAUDE.md, "Depurar la UI"), emitir `media`, `notification`, `system` (`{kind:'volume', level, muted}`, `{kind:'brightness', level}`, `charging`, `battery_low`…), `drop` y los hooks de Claude con `curl`, y hacer capturas a mitad de animación (`screenshot` justo después del `emit`) para ver que ocurre.
 - El usuario no puede ver las animaciones desde aquí y no quiere artifacts (tokens). Dejar la versión nueva abierta para que él la pruebe en vivo.
 - Pruebas: las de Rust (incluida la nueva de `bt_disconnected`) y `node --test tests/lyrics.test.js`.
+
+## Añadido el 2026-11-18: letras de la canción
+
+Lo que pidió el usuario: que la letra se mueva más suave y que se destaque lo que está sonando (si no se puede, se omite). Además notó que la isla "se agranda y se achica" con líneas largas y cortas.
+
+### Lo que se midió (antes de tocar nada)
+- **El tamaño no depende de la letra.** Música compacta: 380 px fijos. Expandida: 500 × 229 px con una línea de 4 letras y con una de 100 (la larga se corta con «…»). Sin letra: 500 × 228.
+- Lo que sí cambia el ancho del compacto mientras suena música: la campana de pendientes (+60 px, `v.w += 60` en `compactView`) y una sesión de Claude (440 px). Lo más probable es que la campana sea lo que el usuario vio: aparece cuando llega una notificación con el mouse fuera y desaparece al pasar el mouse.
+- **Propuesta (preguntar al usuario antes de hacerlo):** con música, la campana ocupa el sitio del ecualizador en vez de ensanchar la isla. Así el compacto de música mide siempre 380 px.
+
+### Animación de la letra
+Datos: `lyricAt()` devuelve el índice `i` de la línea actual y las líneas tienen `t` (ms). La duración de la línea actual es `lines[i+1].t - lines[i].t`, y con eso se calcula todo lo de abajo. lrclib solo da tiempos por línea, no por palabra.
+
+**Expandida (tres líneas: anterior, actual, siguiente):**
+- Al cambiar de línea, las tres suben juntas como una lista que se desplaza: el bloque entra con `translateY(+altura de una línea)` y llega a 0 en 0,35 s con `--ease-out`. La que deja de sonar pasa a gris pequeño y la nueva crece hasta 17 px, las dos a la vez. Usar `transform: scale` desde 13/17 con `transform-origin: left`, no animar `font-size`. Hoy solo se aclara la actual, y por eso se ve brusco.
+- **Línea actual más larga que el espacio:** en vez del «…», se desplaza una sola vez hacia la izquierda, despacio. Empieza tras 0,6 s y termina al 85 % de la duración de la línea, sin volver. Así se lee entera mientras se canta.
+- **Destacar lo que suena (opcional, depende del consumo):** un barrido de izquierda a derecha sobre la línea actual (texto blanco sobre gris, `background-clip: text`) que dura lo mismo que la línea. Es una transición de una sola vez, pero repinta en cada fotograma mientras dura (casi siempre, con música). **Medir el consumo** con el método de CLAUDE.md. Si pasa de ~5 % de un núcleo con la isla expandida, se quita y se queda solo el desplazamiento. Solo en la vista expandida, nunca en la compacta.
+
+**Compacta (una línea):**
+- Al cambiar de línea, la vieja sube y se desvanece mientras la nueva entra desde abajo, en 0,26 s y las dos a la vez. Hoy solo entra la nueva desde un hueco. Para eso hacen falta dos `span` que se alternan.
+- Línea larga: la marquesina actual va a 30 px/s, ida y vuelta dos veces, sin relación con la canción. Pasa a recorrerse **una sola vez, al ritmo de la línea** (las mismas reglas que la línea larga expandida), sin volver.
+
+**Para todas:**
+- Si la posición salta más de 2 s (adelantar, retroceder, otra canción), la línea nueva aparece sin animación de desplazamiento, solo con un fundido de 0,15 s. Así no se ve la letra corriendo.
+- Pausa: la letra se queda quieta y la línea actual baja a `opacity .6`, como la carátula. Al reanudar vuelve a 1.
+- Tramos instrumentales (`♪`): tenue (`--text-3`), sin barrido.
+- `prefers-reduced-motion`: solo cambio de texto, sin desplazamientos.
+
+### Cómo verificar
+- Con música real que tenga letra sincronizada, por CDP: muestrear el ancho y el alto de `.shape` cada segundo durante una canción entera. Con el notch compacto deben quedar fijos, salvo que aparezcan la campana o Claude.
+- `document.getAnimations()` en reposo con música: solo las de cada cambio de línea (hoy unas 2 cada 8 s) y, si se mantiene, el barrido.
+- Medir el consumo con el barrido y sin él antes de decidir.
