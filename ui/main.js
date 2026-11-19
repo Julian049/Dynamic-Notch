@@ -41,10 +41,11 @@ const EAR = 8;
 const PAD = 14;
 const SIZE_EMPTY = [190, 30]; // Figma "None · Idle"
 // Compact height per style; the width comes from compactView() (one per Figma compact variant).
-// Two proportions to choose from (specs/retoques-1.0.md §5): A 38 tall, music 300 wide; B 40 tall, music 280 wide.
-// K scales every compact width (they were designed for 380 wide music); switch with `compactVariant = 'B'` from CDP.
-const VARIANTS = { A: { classic: 38, win11: 44, k: 300 / 380, bell: 48 }, B: { classic: 40, win11: 46, k: 280 / 380, bell: 44 } };
-let compactVariant = 'A';
+// Compact proportions (specs/retoques-1.0.md §5, variant A): 38 tall, music 300 wide. K scales every compact width,
+// which was designed for 380 wide music; BELL is the width the bell adds.
+const COMPACT_H = { classic: 38, win11: 44 };
+const K = 300 / 380;
+const BELL = 48;
 let compactW = 330;
 const WIDTH_EXPANDED = 460; // expanded width of the views without a Figma width (Drop, notification)
 const VIEW_W = { alert: 324, music: 500, claude: 420, focus: 400, batteries: 380, drag: 380, drop: 380, notif: 420, pending: 420 }; // Figma "Size=Expanded" bodies
@@ -109,7 +110,7 @@ async function layout() {
   const notch = $('notch');
   // The expanded width is set before measuring the height, which depends on it.
   if (expanded) notch.style.setProperty('--xw', `${VIEW_W[shownView] || WIDTH_EXPANDED}px`);
-  const [w, h] = expanded ? [VIEW_W[shownView] || WIDTH_EXPANDED, $('full').offsetHeight] : idle ? SIZE_EMPTY : [compactW, VARIANTS[compactVariant][win11 ? 'win11' : 'classic']];
+  const [w, h] = expanded ? [VIEW_W[shownView] || WIDTH_EXPANDED, $('full').offsetHeight] : idle ? SIZE_EMPTY : [compactW, COMPACT_H[win11 ? 'win11' : 'classic']];
   const z = ZOOM[cfg.size] || 1;
   // Fixed width: WebView2 paints a resized window a frame late, so a width change (the window grows
   // on both sides) showed the notch off-centre for a frame. A height change doesn't move anything.
@@ -1179,7 +1180,7 @@ function compactView(list, lyric) {
       v.trail = [el('span', 'divider'), img('claude', 18.04, 13.12), span('val', fmtTime(elapsedOf(top)))];
     }
   } else if (top) claudeView(v, list);
-  v.w = Math.round(v.w * VARIANTS[compactVariant].k); // glance items and the bell keep their own size
+  v.w = Math.round(v.w * K); // glance items and the bell keep their own size
   // Passive: no notice, alert, drop or focus on screen.
   const passive = !(dropError || dragging || notice || top?.state === 'waiting' || sending || sent || focus || drop);
   const items = passive ? glanceItems(!v.main && !v.lead.length && !v.trail.length) : [];
@@ -1191,7 +1192,7 @@ function compactView(list, lyric) {
   }
   // Passive again with notifications not seen yet: the bell with their count.
   if (pending.length && !notice && !dropError && !dragging) {
-    v.w += VARIANTS[compactVariant].bell;
+    v.w += BELL;
     v.trail.push(el('span', 'divider'), badged('bell', icon('bell'), pending.length));
   }
   v.w = Math.min(v.w, MAX_W);
