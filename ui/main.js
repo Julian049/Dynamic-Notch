@@ -725,9 +725,13 @@ listen('vis', ({ payload: visible }) => {
 
 // Everything that loops moves here, ~3 times per second: a CSS animation recomposes the whole
 // transparent window every frame (measured 15–40 % of a core while music plays; ~3 % this way).
+let glowStep = 0;
 setInterval(() => {
   if (document.body.classList.contains('hidden')) return;
   document.body.classList.toggle('blink');
+  // A pending permission's red glow breathes 0.4 → 0.7 → 0.4 every 2 s, in 6 steps (no CSS animation, see above).
+  glowStep = (glowStep + 1) % 6;
+  $('notch').style.setProperty('--glow', $('notch').classList.contains('perm') ? (0.4 + 0.1 * (glowStep < 3 ? glowStep : 6 - glowStep)).toFixed(1) : '');
   const live = $('eq').classList.contains('playing') && !$('eq').hidden;
   for (const bar of $('eq').children) bar.style.transform = live ? `scaleY(${(0.25 + Math.random() * 0.75).toFixed(2)})` : '';
 }, 333);
