@@ -193,6 +193,11 @@ pub fn enable(app: &AppHandle, token: &str) -> Result<(), String> {
 
 pub fn disable(app: &AppHandle) -> Result<(), String> {
     stop(app);
+    remove_hooks()
+}
+
+/// Removes our hooks from every target settings.json (also used by `--restore`, without Tauri).
+pub fn remove_hooks() -> Result<(), String> {
     let errors: Vec<String> = targets().iter().filter_map(|p| edit(p, None).err()).collect();
     if errors.is_empty() { Ok(()) } else { Err(errors.join("\n")) }
 }
@@ -363,5 +368,21 @@ mod tests {
         ]}]}});
         strip_ours(&mut v);
         assert_eq!(v, json!({ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "x" }] }] } }));
+    }
+
+    #[test]
+    fn edit_without_token_strips_ours_from_the_file_keeping_the_rest() {
+        let original = "{\n  \"zeta\": 1,\n  \"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"notify\"\n          }\n        ]\n      }\n    ]\n  },\n  \"alpha\": true\n}\n";
+        let path = std::env::temp_dir().join(format!("dynamic-island-test-{}.json", crate::random_hex(4)));
+        fs::write(&path, original).unwrap();
+        edit(&path, Some("tok")).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains(MARK));
+        let mut bak = path.as_os_str().to_owned();
+        bak.push(".dynamic-island.bak");
+        fs::remove_file(&bak).unwrap();
+        edit(&path, None).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        assert!(!Path::new(&bak).exists());
+        fs::remove_file(&path).unwrap();
     }
 }

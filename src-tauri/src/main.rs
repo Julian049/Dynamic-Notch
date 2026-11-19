@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod claude;
+mod cleanup;
 mod drop;
 mod focus;
 mod media;
@@ -557,6 +558,11 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 }
 
 fn main() {
+    // Run by the uninstaller: no Tauri, no window, no single-instance check.
+    if std::env::args().any(|a| a == "--restore") {
+        cleanup::restore_all();
+        return;
+    }
     let autostarted = std::env::args().any(|a| a == "--autostart");
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--autostart"])))
