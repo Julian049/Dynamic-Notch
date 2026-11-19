@@ -1048,7 +1048,9 @@ function setSlot(slot, nodes) {
   const key = nodes.map((n) => n.outerHTML).join('|');
   if (slot.dataset.key === key) return;
   slot.dataset.key = key;
-  slot.replaceChildren(...nodes);
+  // Nodes already in place stay put: re-inserting one cuts its transition (the level bar, the sun).
+  nodes.forEach((n, i) => slot.children[i] !== n && (slot.children[i] ? slot.children[i].replaceWith(n) : slot.append(n)));
+  while (slot.children.length > nodes.length) slot.lastElementChild.remove();
 }
 
 function render() {
