@@ -417,3 +417,10 @@ body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { 
 .masc { position: relative; flex: none; width: 22px; height: 16px; }
 .masc .bang { right: -7px; bottom: -6px; width: 12px; height: 12px; border: 0; font-size: 9px; line-height: 12px; }
 .perm .shape { box-shadow: 0 3px 12px rgb(255 69 58 / 0.6); }
+
+/* Glance group (clock, batteries) and the battery tab's two blocks */
+.glance { display: flex; align-items: center; gap: 6px; flex: none; }
+.compact.just { justify-content: center; }
+.bblock { display: flex; flex-direction: column; gap: 12px; }
+.bblock + .bblock { padding-top: 2px; }
+.bblock .vhead { justify-content: space-between; }

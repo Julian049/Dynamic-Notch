@@ -63,6 +63,7 @@ pub struct Device {
 #[derive(Default)]
 pub struct Tracker {
     pc: Option<PcBattery>,
+    minutes_to_full: Option<u32>,
     devices: Option<HashMap<String, Device>>,
 }
 
@@ -83,6 +84,7 @@ impl Tracker {
             }
         }
         self.pc = Some(now);
+        self.minutes_to_full = minutes_to_full;
         out
     }
 
@@ -115,7 +117,7 @@ impl Tracker {
             .filter_map(|(_, d)| Some(json!({ "name": d.name, "battery": d.battery? })).filter(|_| d.connected))
             .collect();
         devices.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
-        json!({ "pc": self.pc.as_ref().map(|p| json!({ "percent": p.percent, "charging": p.charging })), "devices": devices })
+        json!({ "pc": self.pc.as_ref().map(|p| json!({ "percent": p.percent, "charging": p.charging, "minutes_to_full": self.minutes_to_full })), "devices": devices })
     }
 }
 

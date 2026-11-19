@@ -9,6 +9,7 @@ const valueOf = (el) =>
   el.type === 'checkbox' ? el.checked : 'number' in el.dataset ? Math.round(Number(el.value)) : 'bool' in el.dataset ? el.value === 'true' : el.value;
 let settings;
 let sessions = [];
+let hasPc = true; // the island's 'batteries' event (every 2 s) says whether this PC has a battery
 
 function fill(s) {
   settings = s;
@@ -40,6 +41,8 @@ function fill(s) {
   renderStatus();
 
   if (s.notif_access !== 'allowed') $('notif-note').textContent = 'Windows no deja leer las notificaciones: revisa Configuración › Privacidad › Notificaciones.';
+  $('glance-pc').disabled = !hasPc;
+  $('glance-pc-note').textContent = hasPc ? 'Muestra el porcentaje en el notch compacto.' : 'Este equipo no tiene batería.';
   $('notif-apps-row').hidden = !(s.notif && s.notif_notch);
   const apps = Object.entries(s.notif_apps).sort((a, b) => a[1].localeCompare(b[1]));
   $('notif-apps').replaceChildren(
@@ -76,6 +79,10 @@ listen('claude-sessions', ({ payload }) => {
   renderStatus();
 });
 emit('claude-sessions-request');
+listen('batteries', ({ payload }) => {
+  const now = !!payload.pc;
+  if (now !== hasPc) (hasPc = now), settings && fill(settings);
+});
 
 async function save(patch) {
   $('error').textContent = '';

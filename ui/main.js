@@ -41,11 +41,14 @@ const EAR = 8;
 const PAD = 14;
 const SIZE_EMPTY = [190, 30]; // Figma "None · Idle"
 // Compact height per style; the width comes from compactView() (one per Figma compact variant).
-const COMPACT_H = { classic: 34, win11: 40 };
+// Two proportions to choose from (specs/retoques-1.0.md §5): A 38 tall, music 300 wide; B 40 tall, music 280 wide.
+// K scales every compact width (they were designed for 380 wide music); switch with `compactVariant = 'B'` from CDP.
+const VARIANTS = { A: { classic: 38, win11: 44, k: 300 / 380, bell: 48 }, B: { classic: 40, win11: 46, k: 280 / 380, bell: 44 } };
+let compactVariant = 'A';
 let compactW = 330;
 const WIDTH_EXPANDED = 460; // expanded width of the views without a Figma width (Drop, notification)
 const VIEW_W = { alert: 324, music: 500, claude: 420, focus: 400, batteries: 380, drag: 380, drop: 380, notif: 420, pending: 420 }; // Figma "Size=Expanded" bodies
-const MAX_W = Math.max(WIDTH_EXPANDED, ...Object.values(VIEW_W)); // widest compact (music + Claude + bell) or expanded view
+const MAX_W = Math.max(WIDTH_EXPANDED, 560, ...Object.values(VIEW_W)); // widest compact (music + Claude + bell) or expanded view
 const ANIM_MS = 620; // longest .shape transition in style.css, plus the 0.08 s it waits on closing (.closing)
 
 let cfg = { claude: false, music: true, lyrics: true, art_color: true, eq: true, claude_working: true, claude_done: true, claude_permission: true };
@@ -79,12 +82,13 @@ let shrinkTimer;
 let shownView = null; // expanded view on screen (pickView); kept while collapsing so the fade-out shows it
 let alert = null; // { kind: 'done'|'permission', phase: 'alert'|'msg' } while Claude's alert opens the notch by itself
 let alertT1, alertT2;
+let alertKind = 'done'; // kept after the alert ends: the view still shows while the notch folds
 let viewMode = null; // mode chosen with a chip until the notch collapses
 
 // ---------- sizing ----------
 
 function hasContent() {
-  return !!(media || claudeSessions().length || drop || sending || sent || dragging || focus || notice);
+  return !!(media || claudeSessions().length || drop || sending || sent || dragging || focus || notice || glanceOn());
 }
 
 function resizeWindow(w, h) {
@@ -105,7 +109,7 @@ async function layout() {
   const notch = $('notch');
   // The expanded width is set before measuring the height, which depends on it.
   if (expanded) notch.style.setProperty('--xw', `${VIEW_W[shownView] || WIDTH_EXPANDED}px`);
-  const [w, h] = expanded ? [VIEW_W[shownView] || WIDTH_EXPANDED, $('full').offsetHeight] : idle ? SIZE_EMPTY : [compactW, COMPACT_H[win11 ? 'win11' : 'classic']];
+  const [w, h] = expanded ? [VIEW_W[shownView] || WIDTH_EXPANDED, $('full').offsetHeight] : idle ? SIZE_EMPTY : [compactW, VARIANTS[compactVariant][win11 ? 'win11' : 'classic']];
   const z = ZOOM[cfg.size] || 1;
   // Fixed width: WebView2 paints a resized window a frame late, so a width change (the window grows
   // on both sides) showed the notch off-centre for a frame. A height change doesn't move anything.
@@ -401,6 +405,7 @@ function startAlert(kind) {
   alert = null;
   if (hovering) return;
   alert = { kind, phase: 'alert' };
+  alertKind = kind;
   setExpanded(true);
   render();
   const hero = $('alert-hero');
@@ -658,42 +663,48 @@ function noticeText(n) {
 }
 const fmtDuration = (min) => (min >= 60 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${min} min`);
 
-// Figma "Batteries · Expanded": hover over a battery or Bluetooth notice.
+// Figma "Batteries · Expanded" (tab): "Este equipo" and the Bluetooth devices as two separate blocks.
 function renderBatteries() {
-  const rows = [];
   const pc = batteries.pc;
+  const row = (glyph, name, pct, text, sub, charging) => {
+    const low = pct <= LOW && !charging;
+    const r = el('div', `drow${low ? ' low' : ''}`);
+    const tile = el('span', 'tile');
+    tile.append(glyph);
+    const meta = el('div', 'meta');
+    meta.append(el('div', 'name', name), el('div', 'what', low ? 'Batería baja' : sub));
+    r.append(tile, meta, span('pct', text), battery(pct, charging ? 'charging' : low ? 'low' : ''));
+    return r;
+  };
+  const block = (title, cap, rows) => {
+    const head = el('div', 'vhead');
+    head.append(el('div', 'title', title));
+    if (cap) head.append(span('cap', cap));
+    const list = el('div', 'devices');
+    list.append(...rows);
+    const b = el('div', 'bblock');
+    b.append(head, list);
+    return b;
+  };
+  const blocks = [];
   if (pc) {
-    const mins = notice?.kind === 'charging' && notice.minutes_to_full;
-    const sub = pc.charging ? 'Cargando' + (mins ? ` · llena en ${fmtDuration(mins)}` : '') : 'En batería';
-    rows.push({ glyph: icon('laptop'), name: 'Este equipo', pct: pc.percent, text: `${pc.percent} %`, sub, charging: pc.charging });
+    const sub = pc.charging ? 'Cargando' + (pc.minutes_to_full ? ` · lleno en ${fmtDuration(pc.minutes_to_full)}` : '') : 'En batería';
+    blocks.push(block('Este equipo', '', [row(icon('laptop'), 'Portátil', pc.percent, `${pc.percent} %`, sub, pc.charging)]));
   }
-  for (const d of batteries.devices) rows.push({ glyph: deviceIcon(d.name, ''), name: d.name, pct: d.battery, text: `~${d.battery} %`, sub: 'Conectado' });
-  const head = el('div', 'vhead');
-  head.append(el('div', 'title', 'Baterías'));
-  if (batteries.devices.length) head.append(span('cap', 'Valores aproximados'));
-  const list = el('div', 'devices');
-  list.append(
-    ...rows.map((r) => {
-      const low = r.pct <= 20 && !r.charging;
-      const row = el('div', `drow${low ? ' low' : ''}`);
-      const tile = el('span', 'tile');
-      tile.append(r.glyph);
-      const meta = el('div', 'meta');
-      meta.append(el('div', 'name', r.name), el('div', 'what', low ? 'Batería baja' : r.sub));
-      row.append(tile, meta, span('pct', r.text), battery(r.pct, r.charging ? 'charging' : low ? 'low' : ''));
-      return row;
-    }),
-  );
-  const key = head.outerHTML + list.outerHTML;
+  if (batteries.devices.length)
+    blocks.push(block(pc ? 'Dispositivos Bluetooth' : 'Dispositivos', 'Valores aproximados', batteries.devices.map((d) => row(deviceIcon(d.name, ''), d.name, d.battery, `~${d.battery} %`, 'Conectado', false))));
+  const key = blocks.map((b) => b.outerHTML).join();
   if ($('batteries').dataset.key === key) return;
   $('batteries').dataset.key = key;
-  $('batteries').replaceChildren(head, list);
+  $('batteries').replaceChildren(...blocks);
+  $('batteries').querySelector('.vhead')?.append(Object.assign(el('span', 'chip-slot')));
 }
 
 // ---------- visibility (driven by Rust, see watch_visibility in main.rs) ----------
 
 listen('vis', ({ payload: visible }) => {
   document.body.classList.toggle('hidden', !visible);
+  if (visible && cfg.glance_clock) render(); // the clock does not tick while hidden
   if (!visible) {
     hovering = false;
     focusAlert = false;
@@ -704,6 +715,12 @@ listen('vis', ({ payload: visible }) => {
 });
 
 // ---------- render ----------
+
+// The clock changes once a minute: a timeout aligned to the minute, not a 1 s interval. Not while hidden.
+(function tickClock() {
+  if (cfg.glance_clock && !document.body.classList.contains('hidden')) render();
+  setTimeout(tickClock, 60000 - (Date.now() % 60000) + 50);
+})();
 
 // Everything that loops moves here, ~3 times per second: a CSS animation recomposes the whole
 // transparent window every frame (measured 15–40 % of a core while music plays; ~3 % this way).
@@ -790,7 +807,7 @@ function renderClaude(list) {
 }
 
 function renderAlert(list) {
-  const perm = alert.kind === 'permission';
+  const perm = alertKind === 'permission';
   const s = perm ? list[0] : list.find((x) => x.state === 'done');
   if (!s) return;
   $('alert-mark').className = `mark${perm ? '' : ' ok'}`;
@@ -875,9 +892,10 @@ function renderDropLeft() {
 // ---------- expanded view ----------
 
 const VIEW_EL = { alert: 'alert', music: 'media', claude: 'claude', focus: 'focus', batteries: 'batteries', notif: 'notif', pending: 'pending', drop: 'drop' };
-const MODES = ['music', 'claude', 'focus', 'pending'];
+const MODES = ['music', 'claude', 'batteries', 'focus', 'pending'];
 // The modes a chip can switch to. Focus is always there when enabled: its view starts a session.
-const modes = (list) => MODES.filter((m) => (m === 'music' ? !!media : m === 'claude' ? list.length > 0 : m === 'pending' ? pending.length > 0 : !!focus || !!cfg.focus));
+const hasBatteries = () => !!batteries.pc || batteries.devices.length > 0;
+const modes = (list) => MODES.filter((m) => (m === 'music' ? !!media : m === 'claude' ? list.length > 0 : m === 'batteries' ? hasBatteries() : m === 'pending' ? pending.length > 0 : !!focus || !!cfg.focus));
 
 // What the expanded notch shows, most urgent first (like compactView); null: nothing to expand to.
 function pickView(list) {
@@ -895,13 +913,14 @@ function pickView(list) {
   if (focus) return 'focus';
   if (media) return 'music';
   if (list.length) return 'claude';
+  if (hasBatteries()) return 'batteries';
   return null;
 }
 
 // "Cambiar de modo": one chip per mode in the view's top-right corner, when there are two or more.
 // Kept across renders (rebuilt only when the set changes) so a click never lands on a replaced button.
-const CHIP_ICON = { music: () => icon('note', 'ic14'), claude: () => img('claude', 14.08, 10.24), focus: () => icon('moon', 'ic14'), pending: () => icon('bell', 'ic14') };
-const CHIP_LABEL = { music: 'Música', claude: 'Claude Code', focus: 'Modo focus', pending: 'Notificaciones' };
+const CHIP_ICON = { music: () => icon('note', 'ic14'), claude: () => img('claude', 14.08, 10.24), batteries: () => icon('battery', 'ic14'), focus: () => icon('moon', 'ic14'), pending: () => icon('bell', 'ic14') };
+const CHIP_LABEL = { music: 'Música', claude: 'Claude Code', batteries: 'Baterías', focus: 'Modo focus', pending: 'Notificaciones' };
 const chipsBox = el('div', 'chips');
 chipsBox.addEventListener('click', (e) => {
   const b = e.target.closest('button');
@@ -1103,6 +1122,26 @@ function noticeView(v, n) {
   v.main = noticeText(n);
 }
 
+// "A la vista": clock, laptop battery and Bluetooth batteries at the end of any passive compact. LOW: Figma's "low" level.
+const LOW = 20;
+const glanceOn = () => !!(cfg.glance_clock || (cfg.glance_pc && batteries.pc) || (cfg.glance_bt && batteries.devices.length));
+const lvl = (pct, charging) => (charging ? ' pos' : pct <= LOW ? ' neg' : '');
+// Each item: its widest width (to size the compact) and node. With other activity: the clock, the laptop and ONE device.
+function glanceItems(alone) {
+  const items = [];
+  const group = (w, ...nodes) => {
+    const g = el('span', 'glance');
+    g.append(...nodes);
+    items.push({ w, node: g });
+  };
+  if (cfg.glance_clock) group(56, span('val', new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })));
+  const pc = cfg.glance_pc && batteries.pc;
+  if (pc) group(66, battery(pc.percent, pc.charging ? 'charging' : pc.percent <= LOW ? 'low' : ''), span(`val${lvl(pc.percent, pc.charging)}`, `${pc.percent}%`));
+  if (cfg.glance_bt) for (const d of batteries.devices.slice(0, alone ? 9 : 1)) group(52, deviceIcon(d.name, ''), span(`val${lvl(d.battery, false)}`, `${d.battery}%`));
+  return items;
+}
+let glanceWas = false;
+
 // The compact line, most urgent first: its width (one per Figma variant) and the pieces of #compact.
 function compactView(list, lyric) {
   const v = { w: 330, cls: '', lead: [], main: '', mainCls: '', sub: '', subCls: '', trail: [], eq: false };
@@ -1140,11 +1179,22 @@ function compactView(list, lyric) {
       v.trail = [el('span', 'divider'), img('claude', 18.04, 13.12), span('val', fmtTime(elapsedOf(top)))];
     }
   } else if (top) claudeView(v, list);
+  v.w = Math.round(v.w * VARIANTS[compactVariant].k); // glance items and the bell keep their own size
+  // Passive: no notice, alert, drop or focus on screen.
+  const passive = !(dropError || dragging || notice || top?.state === 'waiting' || sending || sent || focus || drop);
+  const items = passive ? glanceItems(!v.main && !v.lead.length && !v.trail.length) : [];
+  v.glance = items.length > 0;
+  if (items.length) {
+    const sum = items.reduce((n, i) => n + i.w, 0) + 10 * (items.length - 1);
+    if (!v.main && !v.lead.length && !v.trail.length) (v.w = 28 + sum), (v.cls += ' just'), v.trail.push(...items.map((i) => i.node));
+    else (v.w += 21 + sum), v.trail.push(el('span', 'divider'), ...items.map((i) => i.node));
+  }
   // Passive again with notifications not seen yet: the bell with their count.
   if (pending.length && !notice && !dropError && !dragging) {
-    v.w += 60;
+    v.w += VARIANTS[compactVariant].bell;
     v.trail.push(el('span', 'divider'), badged('bell', icon('bell'), pending.length));
   }
+  v.w = Math.min(v.w, MAX_W);
   return v;
 }
 
@@ -1172,6 +1222,9 @@ function render() {
   coverImg.classList.toggle('paused', !playing);
   setSlot($('lead'), v.lead);
   setSlot($('trail'), v.trail);
+  // The glance group fades in from the right when the compact goes passive; it stays put otherwise.
+  if (v.glance && !glanceWas) for (const g of $('trail').querySelectorAll('.glance')) fx(g, [{ opacity: 0, transform: 'translateX(8px)' }, { opacity: 1, transform: 'none' }], 160);
+  glanceWas = !!v.glance;
   $('marquee').hidden = !v.main;
   $('line-main').className = v.mainCls;
   $('line-sub').className = v.subCls;
@@ -1206,7 +1259,7 @@ function render() {
   broadcastSessions();
 
   // Rust keeps the island visible while something is live and wakes it when that starts.
-  const k = playing || list.some((s) => s.state !== 'done') || !!drop || !!focus;
+  const k = playing || list.some((s) => s.state !== 'done') || !!drop || !!focus || glanceOn();
   if (k !== keep) {
     keep = k;
     invoke('set_keep', { keep });

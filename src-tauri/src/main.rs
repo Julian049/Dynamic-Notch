@@ -58,6 +58,10 @@ pub struct Config {
     pub sys_volume: bool,
     pub sys_battery: bool,
     pub sys_bluetooth: bool,
+    /// "A la vista" en el notch compacto: batería del equipo, baterías Bluetooth y hora.
+    pub glance_pc: bool,
+    pub glance_bt: bool,
+    pub glance_clock: bool,
     /// Notificaciones on: the island shows them.
     pub notif: bool,
     /// "Dónde se muestran": true = only in the notch (Windows' banner and sound off), false = notch and Windows.
@@ -107,6 +111,9 @@ impl Default for Config {
             sys_volume: true,
             sys_battery: true,
             sys_bluetooth: true,
+            glance_pc: false,
+            glance_bt: false,
+            glance_clock: false,
             notif: true,
             notif_notch: false,
             monitor: String::new(),
@@ -355,6 +362,9 @@ fn settings_json(app: &AppHandle, targets: &[PathBuf]) -> Value {
         "sys_volume": c.sys_volume,
         "sys_battery": c.sys_battery,
         "sys_bluetooth": c.sys_bluetooth,
+        "glance_pc": c.glance_pc,
+        "glance_bt": c.glance_bt,
+        "glance_clock": c.glance_clock,
         "notif": c.notif,
         "notif_notch": c.notif_notch,
         "monitor": c.monitor,
@@ -411,6 +421,9 @@ async fn set_settings(app: AppHandle, patch: Value) -> Result<Value, String> {
         ("sys_volume", &mut cfg.sys_volume),
         ("sys_battery", &mut cfg.sys_battery),
         ("sys_bluetooth", &mut cfg.sys_bluetooth),
+        ("glance_pc", &mut cfg.glance_pc),
+        ("glance_bt", &mut cfg.glance_bt),
+        ("glance_clock", &mut cfg.glance_clock),
         ("notif", &mut cfg.notif),
     ] {
         if let Some(b) = patch[key].as_bool() {
