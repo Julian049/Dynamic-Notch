@@ -405,7 +405,11 @@ body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { 
 /* Claude alerts (done / permission): the mascot big and centred. One-shot animations come from main.js. */
 .full.v-alert { padding: 18px 18px 18px; gap: 6px; }
 .alertv { align-items: center; text-align: center; gap: 4px; }
-.alertv .hero { position: relative; display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 6px; border-radius: 16px; background: rgb(255 255 255 / 0.08); }
+/* Figma: the mascot loose and big, with a glow of its colour (red while asking for permission). Static filter, no loop. */
+.alertv .hero { position: relative; display: grid; place-items: center; width: 56px; height: 48px; margin-bottom: 6px; }
+.alertv .hero img { filter: drop-shadow(0 0 10px rgb(217 119 87 / 0.7)); }
+.alertv .hero.perm img { filter: drop-shadow(0 0 12px rgb(255 69 58 / 0.85)); }
+.alertv .cmd b { font-weight: 500; color: var(--negative); }
 .hero .sparks { position: absolute; inset: -8px; opacity: 0; pointer-events: none; }
 .sparks i { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: var(--accent-claude); }
 .sparks i:nth-child(1) { left: 2px; top: 4px; } .sparks i:nth-child(2) { right: 0; top: 10px; } .sparks i:nth-child(3) { right: 8px; bottom: 0; }

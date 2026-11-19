@@ -821,7 +821,8 @@ function renderAlert(list) {
   $('alert-title').textContent = perm ? 'Necesita tu permiso' : 'Tarea terminada';
   $('alert-sub').textContent = `${s.project} · ${perm ? `esperando ${fmtTime(Date.now() - s.t)}` : fmtLong(s.duration)}`;
   $('alert-cmd').hidden = !(perm && s.cmd);
-  $('alert-cmd').textContent = perm ? `Quiere ejecutar ${s.cmd}` : '';
+  $('alert-hero').classList.toggle('perm', perm);
+  $('alert-cmd').replaceChildren(...(perm && s.cmd ? ['Quiere ejecutar ', el('b', '', s.cmd)] : []));
 }
 
 // ---------- Notifications and Drop (expanded) ----------
@@ -1192,7 +1193,13 @@ function compactView(list, lyric) {
   if (items.length) {
     const sum = items.reduce((n, i) => n + i.w, 0) + 10 * (items.length - 1);
     if (!v.main && !v.lead.length && !v.trail.length) (v.w = 28 + sum), (v.cls += ' just'), v.trail.push(...items.map((i) => i.node));
-    else (v.w += 21 + sum), v.trail.push(el('span', 'divider'), ...items.map((i) => i.node));
+    else {
+      // Figma "Siempre visible · con música / con Claude": the lyric gives up to 115 px; Claude drops its project name.
+      const n = v.trail.length;
+      v.trail = v.trail.filter((node) => !node.classList.contains('cap'));
+      v.w += Math.max(0, 21 + sum - (media ? 115 : v.trail.length < n ? 80 : 0));
+      v.trail.push(el('span', 'divider'), ...items.map((i) => i.node));
+    }
   }
   // Passive again with notifications not seen yet: the bell with their count.
   if (pending.length && !notice && !dropError && !dragging) {
