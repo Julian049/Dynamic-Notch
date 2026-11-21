@@ -222,7 +222,19 @@ function paintWords(node, l) {
     node.replaceChildren(...l.words.flatMap((x, k) => [...(k ? [' '] : []), el('span', 'w', x.text)]));
   }
   node.classList.add('kar'); // render() resets the compact line's className each time
-  [...node.children].forEach((c, k) => c.classList.toggle('on', k <= l.w));
+  [...node.children].forEach((c, k) => (c.classList.toggle('on', k <= l.w), c.classList.toggle('now', k === l.w)));
+  follow(node, l);
+}
+// A line too long for its box glides to keep the sung word in view (a CSS transition per word), instead of
+// scrolling at a fixed pace like a sign. Compact: #line moves inside #marquee; expanded: the span inside p.cur.
+function follow(node, l) {
+  const mover = node.id === 'line-main' ? $('line') : node;
+  const box = mover.parentElement;
+  const over = mover.offsetWidth - box.clientWidth;
+  const word = node.children[Math.max(0, l.w)];
+  const x = over > 0 && word ? Math.min(over, Math.max(0, word.offsetLeft - mover.offsetLeft + word.offsetWidth / 2 - box.clientWidth * 0.4)) : 0;
+  mover.classList.add('follow');
+  mover.style.transform = x ? `translateX(${-Math.round(x)}px)` : '';
 }
 let wordTimer;
 function scheduleWord() {
@@ -790,7 +802,9 @@ function setMarquee(main, sub, lyric) {
   }
   $('line-main').textContent = main;
   $('line-sub').textContent = sub;
-  line.classList.remove('scroll', 'once');
+  line.classList.remove('scroll', 'once', 'follow');
+  line.style.transform = ''; // a new line starts at its beginning, without gliding back
+  if (lyric?.words.length) return; // karaoke: follow() keeps the sung word in view
   const over = line.scrollWidth - $('marquee').clientWidth;
   if (over > 0) {
     line.style.setProperty('--shift', `${-over}px`);
@@ -1022,6 +1036,7 @@ function renderLyrics(l) {
   fx(cur, [{ transform: 'scale(0.765)', transformOrigin: OUT }, { transform: 'none', transformOrigin: OUT }], 350);
   fx($('ly-prev'), [{ transform: 'scale(1.308)', transformOrigin: OUT }, { transform: 'none', transformOrigin: OUT }], 350);
   const text = cur.firstElementChild;
+  if (l.words.length) return; // karaoke: follow() keeps the sung word in view
   const over = text.offsetWidth - cur.clientWidth;
   if (over > 0) fx(text, [{ transform: 'none' }, { transform: `translateX(${-over}px)` }], Math.max(1000, l.dur * 0.85 - 600), { delay: 600, easing: 'linear', fill: 'forwards' });
 }

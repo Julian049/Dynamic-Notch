@@ -429,6 +429,8 @@ body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { 
 .bblock + .bblock { padding-top: 2px; }
 .bblock .vhead { justify-content: space-between; }
 
-/* Karaoke lyric: grey until sung. One-off colour change per word, never a looping animation. */
-.kar .w { color: var(--text-3); transition: color 0.12s; }
+/* Karaoke lyric: grey until sung, the word being sung glows. One-off transitions per word, never a looping animation. */
+.kar .w { color: var(--text-3); transition: color 0.35s ease, text-shadow 0.35s ease; }
 .kar .w.on { color: var(--text-1); }
+.kar .w.now { text-shadow: 0 0 10px rgb(255 255 255 / 0.55); }
+#line.follow, .lyrics p.cur > span.follow { transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1); }
