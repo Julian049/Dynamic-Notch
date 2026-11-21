@@ -125,6 +125,8 @@ async function layout() {
   notch.style.setProperty('--w', `${w}px`);
   notch.style.setProperty('--h', `${h}px`);
   notch.classList.toggle('idle', idle);
+  // Active zone for Rust (watch_visibility): the visible shape (ears included, floating gap with Windows 11) + 6 px.
+  invoke('set_hit', { width: (w + (win11 ? 0 : 2 * EAR)) * z, height: (h + (win11 ? WIN11_GAP : 0)) * z, margin: 6 * z });
   document.body.classList.toggle('expanded', expanded);
   // No shrinking mid-drag either; render() runs again when the drag ends.
   if ((gw !== ww || gh !== wh) && !dragArmed && !dragging) shrinkTimer = setTimeout(() => resizeWindow(ww, wh), ANIM_MS);
@@ -148,15 +150,17 @@ function setExpanded(on) {
 
 // "Abrir al pasar el mouse": instant, short (a brief dwell) or never (click instead). Only with something to show.
 let hoverTimer;
-document.documentElement.addEventListener('mouseenter', () => {
+// The mouse position comes from Rust ("hover" event): the window lets clicks through outside the notch.
+listen('hover', ({ payload }) => (payload ? onEnter() : onLeave()));
+function onEnter() {
   hovering = true;
   if (cfg.hover === 'never' || !pickView(claudeSessions())) return;
   hoverTimer = setTimeout(() => (play('abrir'), setExpanded(true)), cfg.hover === 'instant' ? 0 : 300);
-});
+}
 $('notch').addEventListener('click', () => {
   if (!expanded && pickView(claudeSessions())) (play('abrir'), setExpanded(true));
 });
-document.documentElement.addEventListener('mouseleave', () => {
+function onLeave() {
   clearTimeout(hoverTimer);
   hovering = false;
   focusAlert = false;
@@ -164,7 +168,7 @@ document.documentElement.addEventListener('mouseleave', () => {
   if (expanded) (pending = []), play('cerrar'); // the user had them on screen
   forgetSeenSessions();
   setExpanded(false);
-});
+}
 
 // ---------- media + lyrics ----------
 
@@ -200,7 +204,38 @@ function currentLyric() {
   // dur: how long the line lasts (lrclib only times whole lines); jump: not the next line (seek, new song) → no sliding.
   const dur = i >= 0 && lyrics.lines[i + 1] ? lyrics.lines[i + 1].t - lyrics.lines[i].t : 4000;
   const jump = lastLyricIndex !== -2 && i !== lastLyricIndex && i !== lastLyricIndex + 1;
-  return { i, dur, jump, prev: at(i - 1), cur: i < 0 ? '♪' : at(i), next: at(i + 1) };
+  // Words: the line's own timing, or estimated (see wordsOf). `cur` is rebuilt from them so the painted spans keep the same text.
+  const line = lyrics.lines[i], pos = positionNow();
+  const words = line ? wordsOf(line, lyrics.lines[i + 1]?.t) : [];
+  const w = line && words.length ? wordAt(line, lyrics.lines[i + 1]?.t, pos) : -1;
+  const nextIn = words[w + 1] ? words[w + 1].t - pos : null; // ms to the next word's start
+  const cur = words.length ? words.map((x) => x.text).join(' ') : i < 0 ? '♪' : at(i);
+  return { i, dur, jump, prev: at(i - 1), cur, next: at(i + 1), words, w, nextIn };
+}
+
+// Karaoke: the sung words are white, the rest grey. A word change is a one-off colour transition (class .on),
+// scheduled for the next word's start: no loop and no sweeping gradient (CLAUDE.md, "Consumo").
+function paintWords(node, l) {
+  if (!node || !l.words.length || l.cur === '♪') return;
+  if (node.dataset.k !== l.cur || !node.firstElementChild) {
+    node.dataset.k = l.cur;
+    node.replaceChildren(...l.words.flatMap((x, k) => [...(k ? [' '] : []), el('span', 'w', x.text)]));
+  }
+  node.classList.add('kar'); // render() resets the compact line's className each time
+  [...node.children].forEach((c, k) => c.classList.toggle('on', k <= l.w));
+}
+let wordTimer;
+function scheduleWord() {
+  clearTimeout(wordTimer);
+  const l = currentLyric();
+  if (!l || l.nextIn == null || !media?.playing || document.body.classList.contains('hidden')) return;
+  wordTimer = setTimeout(() => {
+    const n = currentLyric();
+    if (!n || n.i !== lastLyricIndex) return render();
+    paintWords($('line-main'), n);
+    paintWords($('ly-cur').firstElementChild, n);
+    scheduleWord();
+  }, Math.max(30, l.nextIn));
 }
 
 // Rust bumps art_rev when the cover changes (or arrives late); the bytes come from media_art.
@@ -978,8 +1013,9 @@ function renderLyrics(l) {
   $('ly-prev').textContent = l.prev;
   $('ly-next').textContent = l.next;
   $('lyrics').classList.toggle('inst', l.cur === '♪');
-  if (!changed) return;
+  if (!changed) return void paintWords(cur.firstElementChild, l);
   cur.replaceChildren(el('span', '', l.cur));
+  paintWords(cur.firstElementChild, l);
   if (l.jump) return void fx($('lyrics'), [{ opacity: 0 }, { opacity: 1 }], 150);
   const OUT = 'left center';
   fx($('lyrics'), [{ transform: 'translateY(26px)' }, { transform: 'none' }], 350);
@@ -1267,7 +1303,8 @@ function render() {
   else if (shownView === 'pending' && expanded) renderPending();
   if (drop) renderDrop();
 
-  layout().then(() => setMarquee(v.main, v.sub, v.lyric));
+  layout().then(() => (setMarquee(v.main, v.sub, v.lyric), v.lyric && paintWords($('line-main'), v.lyric)));
+  scheduleWord();
   broadcastSessions();
 
   // Rust keeps the island visible while something is live and wakes it when that starts.

@@ -148,6 +148,16 @@ struct Vis {
     /// A drag is under way: the UI pre-grows the window over the drop zone now, because resizing
     /// it while a file hovers over it makes Windows drop the drag target and lose the drop.
     armed: bool,
+    /// Visible shape of the notch in logical px (already zoomed) plus its margin, from the UI's `set_hit`.
+    hit: (f64, f64, f64),
+    /// The cursor is on the active zone and the UI has been told (`hover` event).
+    hover: bool,
+    /// The cursor came in with a button held that went down outside: no hover until it leaves and returns.
+    blocked: bool,
+    /// The last left-button press landed on the active zone.
+    press_in: bool,
+    /// The window currently lets the mouse through (`WS_EX_TRANSPARENT`).
+    ignoring: bool,
 }
 
 pub struct AppState {
@@ -235,20 +245,25 @@ fn watch_visibility(app: AppHandle) {
         let dx = (p.x - (mx + mw / 2)).abs() as f64 / scale;
         let dy = (p.y - my) as f64 / scale;
         let on_monitor = p.x >= mx && p.x < mx + mw;
-        let in_window = match (w.outer_position(), w.outer_size()) {
-            (Ok(pos), Ok(size)) => {
-                p.x >= pos.x && p.x < pos.x + size.width as i32 && p.y >= pos.y && p.y < pos.y + size.height as i32
-            }
-            _ => false,
+        let (visible, (hw, hh, hm)) = {
+            let v = state.vis.lock().unwrap();
+            (v.visible, v.hit)
         };
+        let inside = visible
+            && match (w.outer_position(), w.outer_size()) {
+                (Ok(pos), Ok(size)) => hit((p.x, p.y), (pos.x, pos.y, size.width as i32), (hw, hh), hm, scale),
+                _ => false,
+            };
         let lbutton = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) } as u16 & 0x8000 != 0;
         let in_drag_zone = on_monitor && (0.0..80.0).contains(&dy) && dx < 300.0;
 
         let now = Instant::now();
+        let drop_open = state.drop.lock().unwrap().is_some();
         let mut v = state.vis.lock().unwrap();
         if lbutton && !v.lbutton_was_down {
             v.dragging_in = drop_on && !in_drag_zone; // Drop off: drags don't wake or grow the island
             v.press = Some(p);
+            v.press_in = inside;
         }
         if !lbutton {
             v.dragging_in = false;
@@ -260,7 +275,31 @@ fn watch_visibility(app: AppHandle) {
             v.armed = armed;
             let _ = w.emit("drag-armed", armed);
         }
-        if v.keep || near || (v.visible && in_window) {
+        // Hover is decided here, not by the webview: with the window letting the mouse through it
+        // would never get a `mouseleave`. A drag that began outside never opens the notch.
+        if !inside {
+            v.blocked = false;
+            if v.hover {
+                v.hover = false;
+                let _ = w.emit("hover", false);
+            }
+        } else if !v.hover {
+            if lbutton && !v.press_in {
+                v.blocked = true;
+            }
+            if !v.blocked {
+                v.hover = true;
+                let _ = w.emit("hover", true);
+            }
+        }
+        // Let clicks through to what is underneath, except where the island is — and during a file drag
+        // or with Drop open, when Tauri's drop target needs the window to receive the mouse.
+        let ignore = !(inside || v.armed || drop_open);
+        if ignore != v.ignoring {
+            v.ignoring = ignore;
+            let _ = w.set_ignore_cursor_events(ignore);
+        }
+        if v.keep || near || inside {
             v.last_active = Some(now);
         }
         if !v.visible {
@@ -300,6 +339,19 @@ fn resize(window: WebviewWindow, width: f64, height: f64) -> Result<(), String> 
         Ok(())
     };
     run().map_err(|e| e.to_string())
+}
+
+/// The UI reports the visible notch (logical px, zoom applied) and the active-zone margin.
+#[tauri::command]
+fn set_hit(app: AppHandle, width: f64, height: f64, margin: f64) {
+    app.state::<AppState>().vis.lock().unwrap().hit = (width, height, margin);
+}
+
+/// Is the cursor on the notch's active zone? The notch is centred on the window and flush with its top;
+/// `notch` and `margin` are logical px, `scale` turns them into the physical px of `cursor` and `win` (x, y, width).
+fn hit(cursor: (i32, i32), win: (i32, i32, i32), notch: (f64, f64), margin: f64, scale: f64) -> bool {
+    let (dx, dy) = ((cursor.0 - win.0) as f64 - win.2 as f64 / 2.0, (cursor.1 - win.1) as f64);
+    dx.abs() <= (notch.0 / 2.0 + margin) * scale && (0.0..=(notch.1 + margin) * scale).contains(&dy)
 }
 
 #[tauri::command]
@@ -569,6 +621,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             resize,
             set_keep,
+            set_hit,
             wake_island,
             get_settings,
             set_settings,
@@ -643,4 +696,31 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hit;
+
+    // Window 600 px wide at x=100, y=0; notch 300x38 (+6 margin) centred at x=400.
+    const WIN: (i32, i32, i32) = (100, 0, 600);
+
+    #[test]
+    fn inside_edge_and_outside() {
+        assert!(hit((400, 10), WIN, (300.0, 38.0), 6.0, 1.0));
+        assert!(hit((556, 44), WIN, (300.0, 38.0), 6.0, 1.0)); // exact edge: 150 + 6, 38 + 6
+        assert!(!hit((557, 10), WIN, (300.0, 38.0), 6.0, 1.0)); // 1 px beyond the side
+        assert!(!hit((400, 45), WIN, (300.0, 38.0), 6.0, 1.0)); // 1 px below
+        assert!(!hit((400, -1), WIN, (300.0, 38.0), 6.0, 1.0));
+    }
+
+    #[test]
+    fn scaled() {
+        // 125 %: notch 375 px, margin 7.5 px.
+        assert!(hit((400 + 195, 10), WIN, (300.0, 38.0), 6.0, 1.25)); // 187.5 + 7.5
+        assert!(!hit((400 + 196, 10), WIN, (300.0, 38.0), 6.0, 1.25));
+        // Zoom 0.85 arrives already applied by the UI: 255 wide, margin 5.1.
+        assert!(hit((400 + 132, 10), WIN, (255.0, 32.3), 5.1, 1.0));
+        assert!(!hit((400 + 133, 10), WIN, (255.0, 32.3), 5.1, 1.0));
+    }
 }

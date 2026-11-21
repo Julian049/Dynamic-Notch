@@ -428,3 +428,7 @@ body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { 
 .bblock { display: flex; flex-direction: column; gap: 12px; }
 .bblock + .bblock { padding-top: 2px; }
 .bblock .vhead { justify-content: space-between; }
+
+/* Karaoke lyric: grey until sung. One-off colour change per word, never a looping animation. */
+.kar .w { color: var(--text-3); transition: color 0.12s; }
+.kar .w.on { color: var(--text-1); }
