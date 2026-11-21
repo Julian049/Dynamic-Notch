@@ -194,6 +194,19 @@ fn show_window(w: &WebviewWindow, cmd: windows::Win32::UI::WindowsAndMessaging::
     }
 }
 
+/// Lets the mouse through the window (or stops). Not Tauri's set_ignore_cursor_events: tao re-applies all its
+/// window flags, and since the island is shown with a raw ShowWindow tao still thinks it is hidden and hides it.
+fn pass_through(w: &WebviewWindow, on: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_LAYERED, WS_EX_TRANSPARENT};
+    let Ok(h) = w.hwnd() else { return };
+    let hwnd = HWND(h.0);
+    let flags = (WS_EX_TRANSPARENT.0 | WS_EX_LAYERED.0) as isize;
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, if on { ex | flags } else { ex & !flags });
+    }
+}
+
 /// Shows the island (if hidden) and restarts the auto-hide countdown.
 pub fn wake(app: &AppHandle) {
     let state = app.state::<AppState>();
@@ -297,7 +310,7 @@ fn watch_visibility(app: AppHandle) {
         let ignore = !(inside || v.armed || drop_open);
         if ignore != v.ignoring {
             v.ignoring = ignore;
-            let _ = w.set_ignore_cursor_events(ignore);
+            pass_through(&w, ignore);
         }
         if v.keep || near || inside {
             v.last_active = Some(now);
