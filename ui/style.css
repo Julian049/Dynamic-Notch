@@ -368,9 +368,8 @@ body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { 
 .notif { flex-direction: row; align-items: flex-start; gap: 12px; }
 .napp { position: relative; flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; font-weight: 600; color: #fff; }
 .napp > img:not(.from-phone) { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
-/* The phone logo has wide transparent margins: the img is zoomed inside a clipped box. */
 .from-phone { position: absolute; right: -4px; bottom: -4px; width: 55%; height: 55%; border-radius: 28%; overflow: hidden; background: #000; }
-.from-phone img { width: 100%; height: 100%; transform: scale(1.35); object-fit: cover; }
+.from-phone img { width: 100%; height: 100%; object-fit: cover; }
 .app-icon .from-phone { width: 13px; height: 13px; right: -5px; bottom: -5px; }
 .app-icon .from-phone img { width: 100%; height: 100%; border-radius: 0; }
 .napp.sm { width: 36px; height: 36px; border-radius: 10px; font-size: 16px; }
@@ -383,6 +382,13 @@ body.blink .dot.working, body.blink .dot.waiting, body.blink .sdots i.waiting { 
 .full.v-pending { padding: 14px 18px 14px; gap: 14px; }
 .pending .more { text-align: center; font-size: 11px; line-height: 14px; color: var(--text-3); }
 .pending .srow .meta { flex: 1; }
+/* Like Windows' panel: a click opens the notification, the ✕ deletes it there too. */
+.notif, .pending .srow { cursor: pointer; }
+.nx { width: 22px; height: 22px; background: transparent; color: var(--text-3); }
+.nx .ic { width: 14px; height: 14px; }
+.notif .nx { margin: -2px -6px 0 -4px; }
+.pending .srow .nx { margin-right: -4px; }
+.pill.clear { flex: none; height: 26px; padding: 0 12px; font-size: 12px; }
 
 /* ---------- Animations (one-shot only; nothing loops, see the rule above) ---------- */
 /* A view's children enter when it is shown (display none → block restarts the animation), staggered by 30 ms. */

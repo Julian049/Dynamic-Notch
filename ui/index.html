@@ -99,12 +99,14 @@
             <div class="nhead"><b class="title" id="notif-title"></b><span class="sub" id="notif-app"></span><span class="count" id="notif-count" hidden></span><span class="when">ahora</span></div>
             <p class="nbody" id="notif-body"></p>
           </div>
+          <button class="xbtn nx" id="notif-x" aria-label="Borrar notificación"><span class="ic" style="--i:url(icons/notch-close.svg)"></span></button>
         </div>
 
         <!-- Figma "Notifications · Pending": what arrived while the notch was closed -->
         <div class="pending view" id="pending" hidden>
           <div class="vhead">
             <div class="meta"><div class="title">Notificaciones</div><div class="sub" id="pending-sub"></div></div>
+            <button class="pill clear" id="pending-clear">Borrar todo</button>
             <span class="chip-slot"></span>
           </div>
           <div class="card rows" id="pending-rows"></div>

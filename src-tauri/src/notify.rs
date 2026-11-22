@@ -119,7 +119,8 @@ fn texts(n: &UserNotification) -> windows::core::Result<Vec<String>> {
 }
 
 fn icon(n: &UserNotification) -> Option<Vec<u8>> {
-    let logo = n.AppInfo().ok()?.DisplayInfo().ok()?.GetLogo(Size { Width: 64.0, Height: 64.0 }).ok()?;
+    // Large: the UI trims the logo's transparent margin, and what's left still has to be sharp.
+    let logo = n.AppInfo().ok()?.DisplayInfo().ok()?.GetLogo(Size { Width: 256.0, Height: 256.0 }).ok()?;
     crate::media::read_stream(&logo.cast::<IRandomAccessStreamReference>().ok()?).ok().flatten()
 }
 
@@ -128,6 +129,42 @@ fn logo_src(payload: &str) -> Option<String> {
     let tag = payload.split("<image").skip(1).map(|t| t.split('>').next().unwrap_or("")).find(|t| t.contains(r#"placement="appLogoOverride""#))?;
     let src = tag.split(r#"src=""#).nth(1)?.split('"').next()?;
     Some(src.strip_prefix("file:///")?.replace("&amp;", "&"))
+}
+
+/// What a click in Windows' panel launches: the `launch` URI of a `protocol` toast, if any.
+fn launch_uri(payload: &str) -> Option<String> {
+    let tag = payload.split("<toast").nth(1)?.split('>').next()?;
+    let attr = |name: &str| tag.split(&format!(r#" {name}=""#)).nth(1)?.split('"').next();
+    (attr("activationType")? == "protocol").then_some(())?;
+    let uri = attr("launch")?.replace("&quot;", "\"").replace("&apos;", "'").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
+    // A URI scheme, never a file path or file: URI.
+    let scheme = uri.split(':').next()?;
+    (scheme.len() > 1 && scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+.-".contains(c)) && !scheme.eq_ignore_ascii_case("file")).then_some(uri)
+}
+
+/// What opening each notification on screen does (by notification id).
+#[derive(Default)]
+pub struct Opens(Mutex<HashMap<u32, (String, Option<String>)>>);
+
+/// A click on a notification: does what the panel would (its protocol URI) or opens its app, and,
+/// like the panel, removes it.
+#[tauri::command]
+pub fn notif_open(opens: State<Opens>, id: u32) -> Result<(), String> {
+    let (aumid, uri) = opens.0.lock().unwrap().get(&id).cloned().ok_or("notificación desconocida")?;
+    let _ = UserNotificationListener::Current().and_then(|l| l.RemoveNotification(id));
+    use std::os::windows::process::CommandExt;
+    // explorer.exe opens URIs and shell:AppsFolder\<AUMID> like the Start menu does, without a console.
+    let target = uri.unwrap_or_else(|| format!(r"shell:AppsFolder\{aumid}"));
+    std::process::Command::new("explorer.exe").arg(target).creation_flags(0x0800_0000).spawn().map(drop).map_err(|e| e.to_string())
+}
+
+/// Deletes notifications from Windows' panel too.
+#[tauri::command]
+pub fn notif_remove(ids: Vec<u32>) {
+    let Ok(l) = UserNotificationListener::Current() else { return };
+    for id in ids {
+        let _ = l.RemoveNotification(id);
+    }
 }
 
 /// Phone Link puts the phone app's name first: (app, title, body).
@@ -149,7 +186,7 @@ impl Drop for Wipe {
 /// The real AUMID and logo bytes of a notification, from Windows' own database (the listener API
 /// gives Phone Link's AUMID for every phone app and no images). Reads a copy: the service keeps
 /// the original open in WAL mode.
-fn toast_source(id: u32) -> Option<(String, Option<Vec<u8>>)> {
+fn toast_source(id: u32) -> Option<(String, Option<Vec<u8>>, Option<String>)> {
     let from = std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join(r"Microsoft\Windows\Notifications");
     let dir = std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join(r"dev.julian.dynamicisland\wpn");
     std::fs::create_dir_all(&dir).ok()?;
@@ -172,7 +209,8 @@ fn toast_source(id: u32) -> Option<(String, Option<Vec<u8>>)> {
             })?)),
         )
         .ok()?;
-    let logo = logo_src(&String::from_utf8_lossy(&payload))
+    let payload = String::from_utf8_lossy(&payload);
+    let logo = logo_src(&payload)
         .and_then(|p| std::fs::File::open(p).ok())
         .and_then(|f| {
             use std::io::Read;
@@ -181,7 +219,7 @@ fn toast_source(id: u32) -> Option<(String, Option<Vec<u8>>)> {
             f.take((16 << 20) + 1).read_to_end(&mut buf).ok()?;
             (!buf.is_empty() && buf.len() <= 16 << 20).then_some(buf)
         });
-    Some((aumid, logo))
+    Some((aumid, logo, launch_uri(&payload)))
 }
 
 pub fn access_status() -> &'static str {
@@ -211,8 +249,10 @@ pub fn run(app: AppHandle) {
         let Ok(list) = listener.GetNotificationsAsync(NotificationKinds::Toast).and_then(|op| op.get()) else { continue };
         let mut now = HashSet::new();
         let mut fresh = vec![];
+        let mut ids = HashSet::new();
         for n in &list {
             let (Ok(id), Ok(t)) = (n.Id(), texts(&n)) else { continue };
+            ids.insert(id);
             let key = (id, t.join("\n"));
             if seen.as_ref().is_some_and(|s| !s.contains(&key)) {
                 fresh.push((n.CreationTime().map(|c| c.UniversalTime).unwrap_or(0), n, t));
@@ -220,22 +260,31 @@ pub fn run(app: AppHandle) {
             now.insert(key);
         }
         let first = seen.is_none();
+        if let Some(s) = &seen {
+            // Removed in Windows (cleared or clicked in the panel): the island drops them too.
+            let gone: HashSet<u32> = s.iter().map(|k| k.0).filter(|id| !ids.contains(id)).collect();
+            if !gone.is_empty() {
+                app.state::<Opens>().0.lock().unwrap().retain(|id, _| !gone.contains(id));
+                let _ = app.emit_to("island", "notification-gone", &gone);
+            }
+        }
         seen = Some(now);
         if first || fresh.is_empty() {
             continue;
         }
         fresh.sort_by_key(|f| f.0);
         let more = fresh.len() - 1;
+        let fresh_ids: Vec<u32> = fresh.iter().filter_map(|f| f.1.Id().ok()).collect();
         let (_, n, t) = fresh.pop().unwrap();
         let Ok(info) = n.AppInfo() else { continue };
         let mut aumid = info.AppUserModelId().map(|a| a.to_string()).unwrap_or_default();
         let host = aumid.clone(); // Phone Link's own AUMID, for the corner badge
         let mut name = info.DisplayInfo().and_then(|d| d.DisplayName()).map(|d| d.to_string()).unwrap_or_default();
-        let (real, logo) = toast_source(n.Id().unwrap_or(0)).unzip();
-        if let Some(real) = real {
-            aumid = real;
+        let id = n.Id().unwrap_or(0);
+        let (mut logo, mut uri) = (None, None);
+        if let Some((real, l, u)) = toast_source(id) {
+            (aumid, logo, uri) = (real, l, u);
         }
-        let logo = logo.flatten();
         let (mut title, mut body) = (None, None);
         if aumid.contains("!YourPhoneNotifications_") {
             let (app, ti, bo) = phone_texts(t.clone());
@@ -271,9 +320,14 @@ pub fn run(app: AppHandle) {
                 }
             }
         }
+        // Phone Link's per-app AUMIDs can't be launched; Phone Link itself can.
+        let launchable = badge.clone().unwrap_or_else(|| aumid.clone());
+        app.state::<Opens>().0.lock().unwrap().insert(id, (launchable, uri));
         let mut t = t.into_iter();
         wake(&app);
         let _ = app.emit_to("island", "notification", json!({
+            "id": id,
+            "ids": fresh_ids,
             "aumid": aumid,
             "badge": badge,
             "app": name,
@@ -297,6 +351,17 @@ mod tests {
         assert_eq!(logo_src(r#"<image placement="appLogoOverride" src="ms-appx:///a.png"/>"#), None);
         assert_eq!(logo_src(r#"<image placement="hero" src="file:///C:\a.png"/>"#), None);
         assert_eq!(logo_src("<toast><text>x</text></toast>"), None);
+    }
+
+    #[test]
+    fn launch_uri_only_for_protocol_toasts() {
+        let snip = r#"<toast launch="ms-screensketch:edit?&amp;filePath=C%3A%5Ca.png&amp;source=Toast" activationType="protocol"><visual/></toast>"#;
+        assert_eq!(launch_uri(snip).as_deref(), Some("ms-screensketch:edit?&filePath=C%3A%5Ca.png&source=Toast"));
+        assert_eq!(launch_uri(TOAST).as_deref(), None); // "x" has no scheme
+        assert_eq!(launch_uri(r#"<toast launch="app:x"><visual/></toast>"#), None); // foreground
+        assert_eq!(launch_uri(r#"<toast launch="file:///C:/a.exe" activationType="protocol">"#), None);
+        assert_eq!(launch_uri(r#"<toast launch="C:\a.exe" activationType="protocol">"#), None);
+        assert_eq!(launch_uri(r#"<toast activationType="protocol" launch="https://x.y/?a=1&amp;b=2">"#).as_deref(), Some("https://x.y/?a=1&b=2"));
     }
 
     #[test]

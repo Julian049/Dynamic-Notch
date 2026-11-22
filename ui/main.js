@@ -664,11 +664,52 @@ listen('notification', ({ payload }) => {
 function loadIcon(id) {
   if (!id || id in notifIcons) return;
   notifIcons[id] = null;
-  invoke('notif_icon', { aumid: id }).then((buf) => {
-    notifIcons[id] = buf?.byteLength ? URL.createObjectURL(new Blob([buf])) : null;
+  invoke('notif_icon', { aumid: id }).then(async (buf) => {
+    notifIcons[id] = buf?.byteLength ? await trimmedIcon(new Blob([buf])) : null;
     render();
   });
 }
+// The logo without its transparent padding (iconCrop); as it came if it can't be decoded.
+async function trimmedIcon(blob) {
+  try {
+    const bmp = await createImageBitmap(blob);
+    const c = new OffscreenCanvas(bmp.width, bmp.height);
+    c.getContext('2d').drawImage(bmp, 0, 0);
+    const crop = iconCrop(c.getContext('2d').getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+    if (!crop) return URL.createObjectURL(blob);
+    const [x, y, s] = crop;
+    const out = new OffscreenCanvas(s, s);
+    out.getContext('2d').drawImage(c, x, y, s, s, 0, 0, s, s);
+    return URL.createObjectURL(await out.convertToBlob());
+  } catch {
+    return URL.createObjectURL(blob);
+  }
+}
+// Like Windows' panel: a click opens what the notification points to (and Windows removes it), the
+// ✕ deletes it there too, and one cleared or opened in the panel leaves the island as well.
+function dropNotifs(ids) {
+  const hit = (n) => (n.ids || [n.id]).some((i) => ids.includes(i));
+  pending = pending.filter((n) => !hit(n));
+  if (notice?.kind === 'notification' && hit(notice)) {
+    notice = null;
+    clearTimeout(noticeTimer);
+    if (!hovering) setExpanded(false);
+  }
+  render();
+}
+const openNotif = (n) => (invoke('notif_open', { id: n.id }).catch(console.error), dropNotifs([n.id]));
+function removeNotifs(list) {
+  const ids = list.flatMap((n) => n.ids || [n.id]);
+  invoke('notif_remove', { ids });
+  dropNotifs(ids);
+}
+listen('notification-gone', ({ payload }) => dropNotifs(payload));
+$('notif').addEventListener('click', (e) => notice?.kind === 'notification' && (e.target.closest('#notif-x') ? removeNotifs([notice]) : openNotif(notice)));
+$('pending-rows').addEventListener('click', (e) => {
+  const n = pending[e.target.closest('.srow')?.dataset.i];
+  if (n) e.target.closest('button') ? removeNotifs([n]) : openNotif(n);
+});
+$('pending-clear').addEventListener('click', () => removeNotifs(pending));
 // The phone's own logo (Phone Link) in the corner of an app icon that came from the phone.
 const badgeImg = (n) => (n.badge && notifIcons[n.badge] ? [Object.assign(document.createElement('span'), { className: 'from-phone' })].map((s) => (s.append(Object.assign(document.createElement('img'), { src: notifIcons[n.badge], alt: '' })), s)) : []);
 function showNotice(payload) {
@@ -906,11 +947,15 @@ const ago = (t) => {
 const MAX_PENDING = 3;
 function renderPending() {
   $('pending-sub').textContent = `${pending.length} sin ver`;
-  const rows = pending.slice(0, MAX_PENDING).map((n) => {
+  const rows = pending.slice(0, MAX_PENDING).map((n, i) => {
       const row = el('div', 'srow');
+      row.dataset.i = i;
+      const x = el('button', 'xbtn nx');
+      x.setAttribute('aria-label', 'Borrar notificación');
+      x.append(icon('close'));
       const meta = el('div', 'meta');
       meta.append(el('div', 'name', n.title || n.app), el('div', 'what', n.body || n.app));
-      row.append(appTile(n.aumid, n.app, 'sm', badgeImg(n)), meta, span('time', ago(n.at)));
+      row.append(appTile(n.aumid, n.app, 'sm', badgeImg(n)), meta, span('time', ago(n.at)), x);
       return row;
   });
   const key = rows.map((r) => r.outerHTML).join();

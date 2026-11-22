@@ -647,6 +647,8 @@ fn main() {
             open_notif_settings,
             demo,
             notify::notif_icon,
+            notify::notif_open,
+            notify::notif_remove,
             focus::focus_start,
             focus::focus_pause,
             focus::focus_stop,
@@ -674,6 +676,7 @@ fn main() {
             app.manage(media::Art::default());
             app.manage(focus::Focus::default());
             app.manage(notify::Icons::default());
+            app.manage(notify::Opens::default());
             if first_run {
                 // "Iniciar con Windows" is on by default.
                 if let Err(e) = handle.autolaunch().enable() {
