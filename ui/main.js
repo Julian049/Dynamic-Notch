@@ -237,15 +237,18 @@ function follow(node, l) {
   mover.style.transform = x ? `translateX(${-Math.round(x)}px)` : '';
 }
 let wordTimer;
+// Where render() last put the lyric: the word timer paints only there, or it would overwrite the focus label,
+// a notice or a Claude alert sharing #line-main (they flickered, alternating with the lyric).
+const lyricIn = { compact: false, expanded: false };
 function scheduleWord() {
   clearTimeout(wordTimer);
   const l = currentLyric();
-  if (!l || l.nextIn == null || !media?.playing || document.body.classList.contains('hidden')) return;
+  if (!l || l.nextIn == null || !media?.playing || document.body.classList.contains('hidden') || !(lyricIn.compact || lyricIn.expanded)) return;
   wordTimer = setTimeout(() => {
     const n = currentLyric();
     if (!n || n.i !== lastLyricIndex) return render();
-    paintWords($('line-main'), n);
-    paintWords($('ly-cur').firstElementChild, n);
+    if (lyricIn.compact) paintWords($('line-main'), n);
+    if (lyricIn.expanded) paintWords($('ly-cur').firstElementChild, n);
     scheduleWord();
   }, Math.max(30, l.nextIn));
 }
@@ -1363,6 +1366,8 @@ function render() {
   else if (shownView === 'pending' && expanded) renderPending();
   if (drop) renderDrop();
 
+  lyricIn.compact = !!v.lyric;
+  lyricIn.expanded = shownView === 'music' && !!lyric;
   layout().then(() => (setMarquee(v.main, v.sub, v.lyric), v.lyric && paintWords($('line-main'), v.lyric)));
   scheduleWord();
   broadcastSessions();
